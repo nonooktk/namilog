@@ -55,9 +55,13 @@ app/
   # ハーネス DB 起動＋スキーマ投入済みの状態で（Mode B の手順参照）
   cd backend && .venv/bin/python tests/smoke_real_llm.py
   ```
-  **状態（2026-07-12 時点）: 未実施。`backend/.env` の `OPENAI_API_KEY` が空のため実行できず**
-  （スクリプトは「設定なし」で安全に停止）。有効なキー投入後に実行し、本注記を更新する。
-  **現時点で「実 GPT 確認済み」とは記録していない。**
+  **状態: 実キーで確認済み（2026-07-12 23:35 JST・ポリゴン）**。gpt-4o-mini / text-embedding-3-small で
+  結果 **PASS**。確認内容:
+  1. 埋め込み生成1件 → `comment_embeddings` 保存（**1536次元**・model=text-embedding-3-small）。
+  2. 日次予測1回 → **構造化出力がスキーマ適合**（predicted_score=5 が 1–10 の整数）・`predictions` へ upsert・
+     advice/rationale が非空で**後段フィルタ通過**（医療断定へのフォールバックなし）。
+  3. FB チャット1往復 → GPT 危機判定（benign 入力で False）＋応答生成が正常。
+  なお pytest 自体は引き続きハーメティック（実 API 非依存）。実キー確認は本スモークで担保する。
 - **Open-Meteo（鍵不要）**: 気圧・日照・寒暖差・天候/湿度を取得し `factor_values` に日次マージ。
   疎通テスト（`tests/test_openmeteo.py::test_live_openmeteo_smoke`）のみ実 API を叩く（ネットワーク
   不通時は skip）。それ以外はフェイク getter でモック。
