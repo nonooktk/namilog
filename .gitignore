@@ -1,0 +1,38 @@
+# ===== 秘匿情報（セキュリティ規定1：絶対にコミットしない） =====
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# ===== Python / FastAPI =====
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# ===== Node / Next.js =====
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# ===== Supabase（ローカル） =====
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# ===== OS / エディタ =====
+.DS_Store
+*.log
+.idea/
+.vscode/
