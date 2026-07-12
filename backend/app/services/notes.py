@@ -14,6 +14,12 @@ from .llm import LLMClient
 
 NOTE_WINDOW_DAYS = 7
 
+# アプリ既定タイムゾーン。週次ノートの「週」の境界はこの tz の暦日で判定する。
+# created_at は UTC 保存の timestamptz のため、素の `created_at >= <date>` で比較すると
+# セッション tz 依存かつ UTC/JST の日跨ぎで「週」がずれ、冪等化が破れる（home.py の
+# 「今日」判定＝coalesce(profiles.timezone,'Asia/Tokyo') とも整合させる。§4.3）。
+APP_DEFAULT_TZ = "Asia/Tokyo"
+
 
 class LLMUnavailableError(RuntimeError):
     """LLM クライアント未設定でノート更新を実行できない場合。"""
@@ -97,16 +103,29 @@ def _build_note_prompt(inputs: dict[str, Any]) -> str:
 
 
 async def _has_weekly_note_this_week(conn, uid: str, base: date) -> bool:
-    """base が属する ISO 週（月曜起点）に weekly_batch 由来の版が既にあるか（冪等化・P1）。"""
-    week_start = base - timedelta(days=base.weekday())  # その週の月曜
+    """base が属する ISO 週（APP_DEFAULT_TZ の月曜起点）に weekly_batch 由来の版が既にあるか（冪等化・P1）。
+
+    比較の要点（2026-07-13 実スタック検証で顕在化した TZ 境界バグの是正）:
+      created_at（timestamptz・UTC 保存）を APP_DEFAULT_TZ の暦日へ正規化してから週境界と比較する。
+      素の `created_at >= <date>` は、date→timestamptz キャストがセッション tz 依存になるうえ、
+      UTC の夜（＝JST の翌朝）に作られた版の暦日が UTC 側で前日にずれ、同一週の版を見落として
+      版が重複していた（JST 早朝バッチで再現）。base も JST 暦日で渡す前提（router は date.today()）。
+    """
+    week_start = base - timedelta(days=base.weekday())  # その週の月曜（APP_DEFAULT_TZ 暦）
     cur = await conn.execute(
         """
         select 1 from public.prediction_notes
         where user_id = %(uid)s and source = 'weekly_batch'
-          and created_at >= %(start)s and created_at < %(end)s
+          and (created_at at time zone %(tz)s)::date >= %(start)s
+          and (created_at at time zone %(tz)s)::date <  %(end)s
         limit 1
         """,
-        {"uid": uid, "start": week_start, "end": week_start + timedelta(days=7)},
+        {
+            "uid": uid,
+            "tz": APP_DEFAULT_TZ,
+            "start": week_start,
+            "end": week_start + timedelta(days=7),
+        },
     )
     return await cur.fetchone() is not None
 

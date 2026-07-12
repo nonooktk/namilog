@@ -10,7 +10,10 @@
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+import asyncio
+from datetime import date, datetime, timedelta, timezone
+
+import psycopg
 
 from conftest import requires_stack
 
@@ -135,6 +138,75 @@ def test_batch_endpoints_require_token(client, user_a):
     assert r.status_code == 401
     r = client.post("/api/notes/refresh", json={"user_id": user_a["id"]})
     assert r.status_code == 401
+
+
+# 冪等判定の TZ 境界マーカー（掃除対象を自テストの挿入行だけに限定するための目印）。
+_TZ_MARKER = "__tz_boundary_regression__"
+
+
+@requires_stack
+def test_weekly_note_idempotency_survives_utc_day_boundary(user_a, db_url):
+    """週次ノート冪等判定が UTC/JST 日跨ぎでも同一週を正しく検出する（回帰・2026-07-13 実スタック検証）。
+
+    バグ再現条件を決定的に固定する（実時刻・ホスト tz に依存しない）:
+      APP_DEFAULT_TZ=Asia/Tokyo で「JST 月曜 05:00」に作られた版は、UTC では前日（日曜）夜になる。
+      修正前の `created_at >= <date>` 比較はこの版を当該週の外と誤判定し、同一週に版を重複生成した。
+      修正後は created_at を JST 暦日へ正規化して比較するため、同一週として検出（True）される。
+    """
+    uid = user_a["id"]
+    # JST 月曜 2026-07-13 05:00 = UTC 2026-07-12(日) 20:00。base は同じ週の JST 月曜。
+    created_utc = datetime(2026, 7, 12, 20, 0, tzinfo=timezone.utc)
+    base_this_week = date(2026, 7, 13)          # JST 月曜（この週）
+    base_prev_week = base_this_week - timedelta(days=7)  # 前週の月曜（窓の外を確認）
+
+    async def _run() -> tuple[bool, bool]:
+        # db_url は postgres 接続（BYPASSRLS）。RLS 迂回で created_at を明示挿入できる。
+        aconn = await psycopg.AsyncConnection.connect(db_url, autocommit=True)
+        try:
+            # 遅延 import: モジュール読み込み順（conftest の env 確定）後に app を触る。
+            from app.services.notes import _has_weekly_note_this_week
+
+            # FK 担保（profiles 行が無ければ id のみで用意）。
+            await aconn.execute(
+                "insert into public.profiles (id) values (%s) on conflict (id) do nothing",
+                (uid,),
+            )
+            # 自テストの残骸を掃除（決定性）。
+            await aconn.execute(
+                "delete from public.prediction_notes where user_id=%s and content=%s",
+                (uid, _TZ_MARKER),
+            )
+            # 既存版と version 衝突しないよう次番号を採番。
+            row = await (
+                await aconn.execute(
+                    "select coalesce(max(version),0)+1 from public.prediction_notes where user_id=%s",
+                    (uid,),
+                )
+            ).fetchone()
+            next_version = row[0]
+            # created_at を明示指定（is_current=false で uq_notes_current 制約を回避）。
+            await aconn.execute(
+                """
+                insert into public.prediction_notes
+                    (user_id, version, content, is_current, source, created_at)
+                values (%s, %s, %s, false, 'weekly_batch', %s)
+                """,
+                (uid, next_version, _TZ_MARKER, created_utc),
+            )
+            in_week = await _has_weekly_note_this_week(aconn, uid, base_this_week)
+            out_week = await _has_weekly_note_this_week(aconn, uid, base_prev_week)
+            # 後片付け。
+            await aconn.execute(
+                "delete from public.prediction_notes where user_id=%s and content=%s",
+                (uid, _TZ_MARKER),
+            )
+            return in_week, out_week
+        finally:
+            await aconn.close()
+
+    in_week, out_week = asyncio.run(_run())
+    assert in_week is True   # 修正の要点: UTC 前日夜の版でも JST 正規化で「同一週」を検出
+    assert out_week is False  # 窓の外（前週基準）は誤検出しない
 
 
 @requires_stack
