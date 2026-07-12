@@ -115,7 +115,7 @@ a { color: var(--color-primary-text); text-decoration: none; }
 /* 戻る / テキストアクション（ヘッダ内） */
 .icon-btn {
   min-width: 48px;
-  min-height: 44px;
+  min-height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
