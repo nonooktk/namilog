@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="なみログ アイコン">
+  <!-- 角丸ラベンダー背景（デザイン仕様2.2 Primary #A78BC9） -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#B79AD6"/>
+      <stop offset="1" stop-color="#9877BE"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- 波モチーフ（白・2本のうねり） -->
+  <g fill="none" stroke="#FFFBF6" stroke-linecap="round">
+    <path d="M96 300 Q160 240 224 300 T352 300 T480 300" stroke-width="26" opacity="0.95"/>
+    <path d="M96 356 Q160 296 224 356 T352 356 T480 356" stroke-width="26" opacity="0.6"/>
+  </g>
+  <!-- しずく / 記録のドット（やわらかいアクセント） -->
+  <circle cx="256" cy="176" r="34" fill="#FCE6EC" opacity="0.95"/>
+</svg>

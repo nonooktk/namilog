@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="なみログ アイコン（マスカブル）">
+  <!-- maskable: 全面ラベンダー背景（角丸なし・セーフゾーン中央80%に描画） -->
+  <defs>
+    <linearGradient id="bgm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#B79AD6"/>
+      <stop offset="1" stop-color="#9877BE"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" fill="url(#bgm)"/>
+  <!-- 波モチーフはセーフゾーン（おおむね x:128-384 / y:150-360）に収める -->
+  <g fill="none" stroke="#FFFBF6" stroke-linecap="round">
+    <path d="M140 300 Q188 258 236 300 T332 300 T428 300" stroke-width="22" opacity="0.95"/>
+    <path d="M140 344 Q188 302 236 344 T332 344 T428 344" stroke-width="22" opacity="0.6"/>
+  </g>
+  <circle cx="256" cy="200" r="28" fill="#FCE6EC" opacity="0.95"/>
+</svg>

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { M_PLUS_Rounded_1c } from "next/font/google";
 import "./globals.css";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
 // デザイン仕様3.1: 丸ゴシック系「M PLUS Rounded 1c」を next/font でセルフホスト。
 // 日本語フォントは全ウェイト preload するとサイズが大きいため preload:false とし、
@@ -38,7 +39,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={mplus.variable}>
-      <body>{children}</body>
+      <body>
+        {/* 本番のみ SW を登録（保守的キャッシュ）。開発時は既存 SW を掃除する。 */}
+        <ServiceWorkerRegister />
+        {children}
+      </body>
     </html>
   );
 }
