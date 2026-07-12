@@ -96,23 +96,49 @@ def _build_note_prompt(inputs: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+async def _has_weekly_note_this_week(conn, uid: str, base: date) -> bool:
+    """base が属する ISO 週（月曜起点）に weekly_batch 由来の版が既にあるか（冪等化・P1）。"""
+    week_start = base - timedelta(days=base.weekday())  # その週の月曜
+    cur = await conn.execute(
+        """
+        select 1 from public.prediction_notes
+        where user_id = %(uid)s and source = 'weekly_batch'
+          and created_at >= %(start)s and created_at < %(end)s
+        limit 1
+        """,
+        {"uid": uid, "start": week_start, "end": week_start + timedelta(days=7)},
+    )
+    return await cur.fetchone() is not None
+
+
 async def refresh_weekly_note(
     conn,
     uid: str,
     client: LLMClient | None,
     *,
     base: date | None = None,
+    force: bool = False,
 ) -> dict[str, Any] | None:
     """新版ノートを作成し current を切り替える（NL-API-17）。同一トランザクション。
 
     conn はバッチ用（service_tx）。RLS 迂回のため user_id を明示する（P-2）。
     更新すべき材料が無い場合は None を返す（無駄な版増加を避ける）。
+
+    冪等化（P1・§7.5.1）: pg_net のタイムアウト再実行等で同一週に版が量産されるのを防ぐため、
+    base が属する ISO 週に既に weekly_batch 版があればスキップして None を返す（version は
+    週1回・単調増加に保たれる）。手動再生成・補正が必要なときは force=True で上書きできる。
+    完全な「受領即202＋裏処理」の非同期冪等化は設計上 M4 申し送り（本実装はその軽量抑制）。
     """
     if client is None:
         raise LLMUnavailableError(
             "OPENAI_API_KEY が未設定のため週次ノート更新を実行できません（実キー提供後に実行）"
         )
     _base = base or date.today()
+
+    # 冪等化: 同一週に既に weekly_batch 版があればスキップ（force で上書き）。
+    if not force and await _has_weekly_note_this_week(conn, uid, _base):
+        return None
+
     inputs = await _gather_inputs(conn, uid, _base)
 
     # 材料が全く無ければ更新しない（初回はオンボーディング等で別途 seed される想定）。

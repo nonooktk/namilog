@@ -47,6 +47,25 @@ def test_feedback_crisis_detection_on_user_utterance(client, user_a, use_fakes):
 
 
 @requires_stack
+def test_feedback_gpt_crisis_detection_without_keyword(client, user_a, use_fakes):
+    """キーワード不一致でも GPT 文脈判定が陽性なら crisis になる（§7.4-3・R1）。"""
+    from _fakes import FakeLLMClient
+
+    # ルールベースには当たらない文面だが GPT が危機と判定するフェイク。
+    use_fakes(llm=FakeLLMClient(gpt_crisis_judgment=True))
+    r = client.post(
+        "/api/feedback",
+        headers=user_a["headers"],
+        json={"content": "もうなにもかも投げ出してしまいたい気分です"},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["crisis_notice"] is True
+    # 応答に確定版の窓口が添えられる。
+    assert "0120-279-338" in body["assistant_message"]["content"]
+
+
+@requires_stack
 def test_feedback_content_validation(client, user_a):
     # 空文字は 422
     r = client.post("/api/feedback", headers=user_a["headers"], json={"content": ""})

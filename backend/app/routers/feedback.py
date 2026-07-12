@@ -22,7 +22,7 @@ from ..db import user_tx
 from ..deps.auth import get_current_user
 from ..deps.providers import get_llm_client
 from ..schemas import FeedbackIn
-from ..services.crisis import detect_crisis_in_texts
+from ..services.crisis import detect_crisis_in_texts, detect_crisis_llm
 from ..services.guardrails import SYSTEM_PROMPT_FEEDBACK, sanitize_advice, wrap_user_data
 from ..services.llm import LLMClient
 from ..services.support_messages import crisis_support_text
@@ -98,7 +98,12 @@ async def post_feedback(
 ):
     """user 発話を保存 → 応答生成 → assistant 発話を保存（NL-API-15）。"""
     # 危機検知（user 発話を入力源に含める。M1 必須2・§7.4）。
-    crisis = detect_crisis_in_texts([body.content])
+    # OR 判定: ルールベース（キーワード）∨ GPT 文脈判定（§7.4-3・R1）。
+    # LLM 未設定（client=None）や GPT 失敗時は detect_crisis_llm が False を返し、
+    # ルールベースのみに degrade する（現挙動維持）。
+    rule_crisis = detect_crisis_in_texts([body.content])
+    gpt_crisis = await detect_crisis_llm(client, body.content)
+    crisis = rule_crisis or gpt_crisis
 
     # 1) user 発話を保存し、応答生成用の直近履歴を取得（tx を短く保つ）。
     async with user_tx(uid) as conn:

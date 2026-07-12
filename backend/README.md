@@ -47,8 +47,17 @@ app/
 - **OpenAI（`OPENAI_API_KEY`）**: 日次予測（GPT-4o-mini・構造化出力）・コメント要約・FB 応答・
   埋め込み（text-embedding-3-small）に使用。**キー未設定でも起動・pytest は通る**（LLM 機能のみ
   degrade）。クライアントは `services/llm.py` で抽象化し、テストはフェイク（`tests/_fakes.py`）を
-  `app.dependency_overrides` で注入して検証している。**実キーでの GPT 動作確認は統括のキー提供後に
-  実施する。現時点で「実 GPT 確認済み」とは記録していない。**
+  `app.dependency_overrides` で注入して検証している。pytest はハーメティック（`tests/conftest.py`
+  が `OPENAI_API_KEY` を空に上書きし、実 API を叩かない）。
+- **実キー疎通スモーク**: `tests/smoke_real_llm.py`（pytest 非対象・手動実行）。ハーネス DB に対し
+  埋め込み1件＋日次予測1回＋FB 危機判定/応答1往復を**実 API**で走らせて疎通確認する。実行:
+  ```bash
+  # ハーネス DB 起動＋スキーマ投入済みの状態で（Mode B の手順参照）
+  cd backend && .venv/bin/python tests/smoke_real_llm.py
+  ```
+  **状態（2026-07-12 時点）: 未実施。`backend/.env` の `OPENAI_API_KEY` が空のため実行できず**
+  （スクリプトは「設定なし」で安全に停止）。有効なキー投入後に実行し、本注記を更新する。
+  **現時点で「実 GPT 確認済み」とは記録していない。**
 - **Open-Meteo（鍵不要）**: 気圧・日照・寒暖差・天候/湿度を取得し `factor_values` に日次マージ。
   疎通テスト（`tests/test_openmeteo.py::test_live_openmeteo_smoke`）のみ実 API を叩く（ネットワーク
   不通時は skip）。それ以外はフェイク getter でモック。

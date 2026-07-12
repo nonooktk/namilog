@@ -43,6 +43,7 @@ class FakeLLMClient:
         *,
         predicted_score: int = 6,
         crisis_flag: bool = False,
+        gpt_crisis_judgment: bool = False,
         advice: str = "水分をとってゆっくり過ごしましょう。",
         rationale: str = "直近の記録と外部指標を参考にした見立てです。",
         note_text: str = "・気圧が下がった翌日に落ち込みやすい傾向。\n・睡眠が短い週は不調が続きやすい。",
@@ -50,6 +51,8 @@ class FakeLLMClient:
     ) -> None:
         self.predicted_score = predicted_score
         self.crisis_flag = crisis_flag
+        # detect_crisis_llm（schema_name="namilog_crisis"）が返す文脈判定の値。
+        self.gpt_crisis_judgment = gpt_crisis_judgment
         self.advice = advice
         self.rationale = rationale
         self.note_text = note_text
@@ -62,6 +65,9 @@ class FakeLLMClient:
         self, *, system: str, user: str, schema_name: str, schema: dict[str, Any]
     ) -> dict[str, Any]:
         self.json_calls.append(user)
+        # 危機判定（§7.4-3・R1）は crisis スキーマで呼ばれる。
+        if schema_name == "namilog_crisis":
+            return {"crisis": self.gpt_crisis_judgment}
         return {
             "predicted_score": self.predicted_score,
             "advice": self.advice,

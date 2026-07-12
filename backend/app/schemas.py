@@ -110,3 +110,6 @@ class NotesRefreshIn(BaseModel):
     user_id: str | None = None
     # 週次ノートの集計基準日（省略時は実行日）。
     base: date | None = None
+    # 冪等化の明示オーバーライド（既定 False）。同一 ISO 週に weekly_batch 版が既にあれば通常は
+    # スキップするが、force=True で強制的に新版を作る（手動再生成・補正用）。P1（§7.5.1）。
+    force: bool = False

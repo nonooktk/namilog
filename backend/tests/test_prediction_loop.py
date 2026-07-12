@@ -88,13 +88,25 @@ def test_daily_prediction_match_and_weekly_note_loop(
     assert note["version"] == 1
     assert "傾向" in note["content"]  # フェイク GPT のノート本文
 
-    # 再実行でバージョンが上がり、current は1つだけ（版管理）。
+    # 6) 冪等化（P1）: 同一週の再実行は新版を作らずスキップ（updated=0・version 据え置き）。
     r = client.post(
         "/api/notes/refresh",
         headers=batch_headers,
         json={"user_id": user_b["id"], "base": date.today().isoformat()},
     )
     assert r.status_code == 200
+    assert r.json()["updated"] == 0  # 同一週に既に weekly_batch 版があるためスキップ
+    r = client.get("/api/notes/current", headers=h)
+    assert r.json()["note"]["version"] == 1  # 版は増えない
+
+    # force=True なら同一週でも強制的に新版を作る（手動再生成・補正用）。current は1つだけ。
+    r = client.post(
+        "/api/notes/refresh",
+        headers=batch_headers,
+        json={"user_id": user_b["id"], "base": date.today().isoformat(), "force": True},
+    )
+    assert r.status_code == 200
+    assert r.json()["updated"] == 1
     r = client.get("/api/notes/current", headers=h)
     assert r.json()["note"]["version"] == 2
 

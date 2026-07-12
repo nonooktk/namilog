@@ -53,7 +53,9 @@ async def refresh_notes(
     for uid in user_ids:
         try:
             async with service_tx() as conn:
-                note = await notes_service.refresh_weekly_note(conn, uid, client, base=base)
+                note = await notes_service.refresh_weekly_note(
+                    conn, uid, client, base=base, force=body.force
+                )
                 if note is not None:
                     updated.append({"user_id": uid, "note": note})
         except Exception as exc:  # noqa: BLE001 ユーザー単位で隔離

@@ -86,6 +86,12 @@ def _load_harness_config() -> dict | None:
 
 _STACK = _load_stack_config() or _load_harness_config()
 
+# pytest はフェイク LLM で決定的に検証する（実 OpenAI を叩かない）。backend/.env に実キーが
+# 設定されていても、テストセッションでは OPENAI_API_KEY を空に上書きして get_llm_client() が
+# None（degrade）を返すようにする。実キーでの疎通確認は別スクリプト（tests/smoke_real_llm.py）。
+# ※環境変数は .env より優先されるため、空文字で上書きすると settings.openai_api_key = "" になる。
+os.environ["OPENAI_API_KEY"] = ""
+
 if _STACK:
     os.environ["SUPABASE_DB_URL"] = _STACK["db_url"]
     os.environ["SUPABASE_JWT_SECRET"] = _STACK["jwt_secret"]
