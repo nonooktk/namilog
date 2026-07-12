@@ -40,8 +40,10 @@ def test_feedback_crisis_detection_on_user_utterance(client, user_a, use_fakes):
     assert r.status_code == 201
     body = r.json()
     assert body["crisis_notice"] is True
-    # 応答に相談窓口の案内文言が添えられる。
-    assert "相談" in body["assistant_message"]["content"] or "窓口" in body["assistant_message"]["content"] or "いのちの電話" in body["assistant_message"]["content"]
+    # 応答に確定版の相談窓口（よりそいホットライン 0120-279-338）が添えられる（デザイン 6.5）。
+    content = body["assistant_message"]["content"]
+    assert "0120-279-338" in content
+    assert "0570-064-556" in content
 
 
 @requires_stack
