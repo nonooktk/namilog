@@ -179,6 +179,14 @@ def client():
 
 
 @pytest.fixture(scope="session")
+def db_url():
+    """RLS 独立検証（probe）用に、テスト DB の接続文字列を返す。"""
+    if _STACK is None:
+        pytest.skip("DB 未起動")
+    return _STACK["db_url"]
+
+
+@pytest.fixture(scope="session")
 def user_a():
     if _STACK is None:
         pytest.skip("DB 未起動")

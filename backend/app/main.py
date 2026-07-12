@@ -17,6 +17,8 @@ from .routers import factors, history, home, profile, records
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 起動時に JWT 構成の安全性を検証する（本番で既定シークレットのまま起動させない。R3）。
+    settings.assert_secure_jwt_config()
     # プールは遅延生成（初回リクエスト時）。ここでは終了処理のみ登録する。
     yield
     await close_pool()

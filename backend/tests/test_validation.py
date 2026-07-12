@@ -75,3 +75,27 @@ def test_factor_keys_unknown_key_rejected(client, user_a):
         json={"factor_keys": ["barometric_pressure", "sleep", "no_such_key"]},
     )
     assert r.status_code == 400
+
+
+@requires_stack
+def test_future_factor_value_date_rejected(client, user_a):
+    """value_date の未来日ガード（R1・§3.2）。"""
+    r = client.put(
+        "/api/factor-values/2999-01-01",
+        headers=user_a["headers"],
+        json={"values": {"sleep": 6}},
+    )
+    assert r.status_code == 422
+
+
+@requires_stack
+def test_bulk_over_limit_rejected(client, user_a):
+    """bulk 件数上限（R2・§3.1 例:1回≤730件）。731件は 422。"""
+    records = [
+        {"record_date": "2020-01-01", "actual_score": 5, "comment": "x"}
+        for _ in range(731)
+    ]
+    r = client.post(
+        "/api/records/bulk", headers=user_a["headers"], json={"records": records}
+    )
+    assert r.status_code == 422

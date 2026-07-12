@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..db import user_tx
 from ..deps.auth import get_current_user
-from ..schemas import FactorSelectionIn, FactorValuesIn
+from ..schemas import FactorSelectionIn, FactorValuesIn, ensure_not_future
 
 router = APIRouter(prefix="/api", tags=["factors"])
 
@@ -136,6 +136,13 @@ async def put_factor_values(
     既存の values に対し `values || new` でキー単位マージ（同一日を複数回入力しても
     上書き・追記できる）。src='manual' を明示して保存する。
     """
+    # value_date の未来日ガード（R1・§3.2「value_date は <= today」。データ汚染防止）
+    try:
+        ensure_not_future(value_date)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     # {"sleep": 6.5} → {"sleep": {"v": 6.5, "src": "manual"}} の形に整える
     shaped = {k: {"v": v, "src": "manual"} for k, v in body.values.items()}
     async with user_tx(uid) as conn:

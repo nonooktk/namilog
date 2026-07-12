@@ -7,20 +7,32 @@
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator
 
+# バルク投入の件数上限（ARCHITECTURE.md §3.1「例:1回≤730件」＝約2年分。R2）。
+BULK_MAX_RECORDS = 730
 
-def _not_future(d: date) -> date:
-    """record_date の未来日ガード（シナモロール M1 レビュー推奨）。
+# 未来日ガードの基準タイムゾーン。MVP はアプリ既定（Asia/Tokyo）を基準にする。
+# 本人 timezone に基づく厳密判定は M3 の timezone 残課題（ARCH §9）で精緻化する（P2）。
+APP_DEFAULT_TZ = ZoneInfo("Asia/Tokyo")
 
-    タイムゾーン差を考慮し、UTC 基準の「明日」までを許容（端末側 tz で当日でも弾かない）。
-    それより先の日付は入力ミスとみなして拒否する。
+
+def _app_today() -> date:
+    return datetime.now(APP_DEFAULT_TZ).date()
+
+
+def ensure_not_future(d: date) -> date:
+    """日付の未来日ガード（ARCH §3.2「record_date / value_date は <= today」）。
+
+    アプリ既定 tz（Asia/Tokyo）の「今日」より後の日付を拒否する。スキーマ内（record_date）と
+    エンドポイントのパス引数（value_date）の両方から使う共通関数（R1）。ValueError を送出する。
     """
-    if d > date.today() + timedelta(days=1):
-        raise ValueError("record_date に未来の日付は指定できません")
+    if d > _app_today():
+        raise ValueError("未来の日付は指定できません")
     return d
 
 
@@ -43,7 +55,7 @@ class RecordIn(BaseModel):
     @field_validator("record_date")
     @classmethod
     def _no_future(cls, v: date) -> date:
-        return _not_future(v)
+        return ensure_not_future(v)
 
 
 class RecordUpdateIn(BaseModel):
@@ -52,7 +64,8 @@ class RecordUpdateIn(BaseModel):
 
 
 class BulkRecordsIn(BaseModel):
-    records: list[RecordIn] = Field(min_length=1)
+    # 件数上限で過大投入によるメモリ/トランザクション肥大を防ぐ（R2・§3.1）。
+    records: list[RecordIn] = Field(min_length=1, max_length=BULK_MAX_RECORDS)
 
 
 # ---- 指標選定（NL-API-04 / 12） ----

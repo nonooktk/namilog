@@ -1,0 +1,53 @@
+# なみログ Supabase ローカル設定（ARCHITECTURE.md §8.1）。
+#
+# ⚠ この config.toml は Supabase CLI 未導入の環境で手書きした雛形です。実際に `supabase start`
+#   する環境では、CLI のバージョンによりスキーマ項目が異なる場合があります。差異が出たら
+#   `supabase init`（別ディレクトリ）で最新テンプレートを生成して該当項目を突き合わせてください。
+# 秘匿値（Google の client_id / secret）は env(...) 参照にして、平文で書かないこと（§7.2）。
+
+project_id = "namilog"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# ARCHITECTURE は「Postgres 15+」。pgvector 含め本 DDL はバージョン非依存。
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]   # factor_catalog 12 行を投入
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# ローカル開発では確認メールを無効化（開発専用ユーザーを即使えるように）
+enable_confirmations = false
+
+# Google ログイン（本番/実検証は統括のクレデンシャル待ち。docs/GOOGLE_OAUTH.md 参照）。
+# 既定は無効。有効化する場合は .env に SUPABASE_AUTH_GOOGLE_CLIENT_ID / _SECRET を設定する。
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"

@@ -25,6 +25,10 @@ from psycopg_pool import AsyncConnectionPool
 
 from .config import settings
 
+# DB に注入するロール名（Supabase の RLS 対象ロール）。JWT の aud（監査値）とは別概念のため
+# リテラルで固定する（P3: jwt_audience 変更時に role 注入が壊れるのを防ぐ）。
+AUTHENTICATED_ROLE = "authenticated"
+
 _pool: AsyncConnectionPool | None = None
 
 
@@ -60,12 +64,14 @@ async def user_tx(uid: str) -> AsyncIterator[AsyncConnection]:
     pool = await get_pool()
     async with pool.connection() as conn:
         async with conn.transaction():
-            claims = json.dumps({"sub": uid, "role": settings.jwt_audience})
+            claims = json.dumps({"sub": uid, "role": AUTHENTICATED_ROLE})
             # 先に claims をセットしてから role を切り替える。
             await conn.execute(
                 "select set_config('request.jwt.claims', %s, true)", (claims,)
             )
-            await conn.execute("select set_config('role', 'authenticated', true)")
+            await conn.execute(
+                "select set_config('role', %s, true)", (AUTHENTICATED_ROLE,)
+            )
             yield conn
 
 
