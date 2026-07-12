@@ -22,6 +22,7 @@ import json
 from datetime import date, timedelta
 from typing import Any
 
+from ..timeutils import app_today
 from . import embeddings
 from .crisis import detect_crisis_in_texts, detect_low_score_streak
 from .guardrails import (
@@ -184,13 +185,15 @@ async def run_daily_prediction(
     """対象ユーザーの明日予測を生成し predictions に upsert する（NL-API-16）。
 
     conn はバッチ用トランザクション（service_tx）を想定。RLS 迂回のため全クエリで user_id 明示。
-    target_date 省略時は today+1（既定は本人 tz 非考慮の実行日。MVP は JST 前提・§4.3 timezone 残課題）。
+    target_date 省略時は today+1。既定 today は app_today()（JST の今日・プロセス TZ 非依存）。
+    date.today() は Render(UTC) で前日にずれ target_date が実態と食い違うため使わない（M4前半 QA Major-1）。
+    本人 timezone に基づく厳密化は §4.3 timezone 残課題（MVP は JST 前提）。
     """
     if client is None:
         raise LLMUnavailableError(
             "OPENAI_API_KEY が未設定のため日次予測を実行できません（実キー提供後に実行）"
         )
-    _today = today or date.today()
+    _today = today or app_today()
     _target = target_date or (_today + timedelta(days=1))
     base = _target - timedelta(days=1)  # 予測の「as-of」日
 

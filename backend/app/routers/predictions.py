@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -20,6 +20,7 @@ from ..schemas import PredictionRunIn
 from ..services import openmeteo, prediction
 from ..services.llm import LLMClient
 from ..services.openmeteo import MeteoGetter
+from ..timeutils import app_today
 
 router = APIRouter(prefix="/api", tags=["batch"])
 
@@ -45,7 +46,9 @@ async def run_predictions(
             detail="OPENAI_API_KEY が未設定のため日次予測を実行できません（実キー提供後に実行）",
         )
 
-    today = date.today()
+    # 既定 today は JST の今日（app_today）。date.today() は Render(UTC) で前日にずれ、
+    # target_date と Open-Meteo 取得日が実態と食い違う（M4前半 QA Major-1）。
+    today = app_today()
     target = body.target_date or (today + timedelta(days=1))
 
     results: list[dict] = []

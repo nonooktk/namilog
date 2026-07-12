@@ -9,16 +9,18 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from ..timeutils import APP_DEFAULT_TZ_NAME as APP_DEFAULT_TZ
+from ..timeutils import app_today
 from .guardrails import SYSTEM_PROMPT_NOTE, wrap_user_data
 from .llm import LLMClient
 
 NOTE_WINDOW_DAYS = 7
 
-# アプリ既定タイムゾーン。週次ノートの「週」の境界はこの tz の暦日で判定する。
+# アプリ既定タイムゾーン（"Asia/Tokyo"）。週次ノートの「週」の境界はこの tz の暦日で判定する。
 # created_at は UTC 保存の timestamptz のため、素の `created_at >= <date>` で比較すると
 # セッション tz 依存かつ UTC/JST の日跨ぎで「週」がずれ、冪等化が破れる（home.py の
 # 「今日」判定＝coalesce(profiles.timezone,'Asia/Tokyo') とも整合させる。§4.3）。
-APP_DEFAULT_TZ = "Asia/Tokyo"
+# 実体は timeutils（単一の真実の源）から取り、SQL の `at time zone` に渡す（M4前半 QA Major-1）。
 
 
 class LLMUnavailableError(RuntimeError):
@@ -109,7 +111,7 @@ async def _has_weekly_note_this_week(conn, uid: str, base: date) -> bool:
       created_at（timestamptz・UTC 保存）を APP_DEFAULT_TZ の暦日へ正規化してから週境界と比較する。
       素の `created_at >= <date>` は、date→timestamptz キャストがセッション tz 依存になるうえ、
       UTC の夜（＝JST の翌朝）に作られた版の暦日が UTC 側で前日にずれ、同一週の版を見落として
-      版が重複していた（JST 早朝バッチで再現）。base も JST 暦日で渡す前提（router は date.today()）。
+      版が重複していた（JST 早朝バッチで再現）。base も JST 暦日で渡す前提（既定は app_today）。
     """
     week_start = base - timedelta(days=base.weekday())  # その週の月曜（APP_DEFAULT_TZ 暦）
     cur = await conn.execute(
@@ -152,7 +154,9 @@ async def refresh_weekly_note(
         raise LLMUnavailableError(
             "OPENAI_API_KEY が未設定のため週次ノート更新を実行できません（実キー提供後に実行）"
         )
-    _base = base or date.today()
+    # 既定基準日は JST の今日（app_today）に統一。date.today() はプロセス TZ 依存で、Render(UTC)
+    # では JST 早朝に前週へずれ、冪等化が破れる（M4前半 QA Major-1）。
+    _base = base or app_today()
 
     # 冪等化: 同一週に既に weekly_batch 版があればスキップ（force で上書き）。
     if not force and await _has_weekly_note_this_week(conn, uid, _base):

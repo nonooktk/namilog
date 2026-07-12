@@ -5,8 +5,6 @@
 """
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..db import service_tx, user_tx
@@ -16,6 +14,7 @@ from ..deps.providers import get_llm_client
 from ..schemas import NotesRefreshIn
 from ..services import notes as notes_service
 from ..services.llm import LLMClient
+from ..timeutils import app_today
 
 router = APIRouter(prefix="/api", tags=["notes"])
 
@@ -39,7 +38,9 @@ async def refresh_notes(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OPENAI_API_KEY が未設定のため週次ノート更新を実行できません（実キー提供後に実行）",
         )
-    base = body.base or date.today()
+    # 既定基準日は JST の今日（app_today）。date.today() は Render(UTC) で週境界が前週へずれ、
+    # 週次ノートが重複生成され得る（M4前半 QA Major-1・service 層の既定と統一）。
+    base = body.base or app_today()
 
     async with service_tx() as conn:
         if body.user_id:

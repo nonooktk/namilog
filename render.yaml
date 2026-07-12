@@ -1,0 +1,58 @@
+# なみログ バックエンド（FastAPI）Render Blueprint
+# 構成: A案（2026-07-12 統括承認）— フロント=Vercel / バックエンド=Render Free /
+#       DB・Auth=Supabase クラウド / バッチ=Supabase pg_cron + pg_net。
+# 参照: ARCHITECTURE.md §1.2（確定構成）/ §7.2（秘匿管理）/ 設計/ホスティング比較.md（A案）。
+#
+# 使い方（手順の詳細は docs/DEPLOY.md）:
+#   1. Render ダッシュボード → New → Blueprint → このリポジトリを接続すると本ファイルを検出。
+#   2. sync:false の環境変数（秘匿値・環境依存値）はダッシュボードで設定する（ここには書かない）。
+#   3. BATCH_INTERNAL_TOKEN は generateValue でランダム生成される。生成値を控えて
+#      Supabase Vault（vault.decrypted_secrets の 'BATCH_INTERNAL_TOKEN'）に登録する（cron.sql）。
+services:
+  - type: web
+    name: namilog-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    region: singapore
+    # pip install -e . で pyproject.toml の依存を解決（app パッケージを editable 導入）。
+    buildCommand: pip install -e .
+    # ポートは Render が注入する $PORT を使う（ハードコードしない）。
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # 未認証で 200 を返す軽量ヘルスチェック（app/main.py の /health）。
+    healthCheckPath: /health
+    envVars:
+      # 実行環境。production では JWT 構成の安全性を起動時に強制する（config.py: assert_secure_jwt_config）。
+      - key: APP_ENV
+        value: production
+      # ビルド時の Python を固定（ローカル検証は 3.11 系。requires-python>=3.11）。
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # --- 以下は秘匿値／環境依存値。ダッシュボードで設定する（sync:false = Blueprint に平文で残さない）---
+      # Supabase プロジェクト API URL（例: https://<PROJECT_REF>.supabase.co）
+      - key: SUPABASE_URL
+        sync: false
+      # anon / publishable 相当（フロント公開鍵。バックエンドでは参照用）
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      # service_role / secret 相当（RLS 迂回・バッチ専用。フロントに絶対露出しない・秘匿）
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # JWT 検証用 JWKS。本番は JWKS（非対称鍵）で検証する（§1.3）。
+      # 例: https://<PROJECT_REF>.supabase.co/auth/v1/.well-known/jwks.json
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      # DB 直結（RLS を効かせるため。Supabase の Connection string〔Session/Direct〕）
+      - key: SUPABASE_DB_URL
+        sync: false
+      # CORS 許可オリジン（カンマ区切りで複数可）。Vercel 本番ドメインを設定する。
+      # 例: https://namilog.vercel.app,https://<custom-domain>
+      - key: CORS_ORIGINS
+        sync: false
+      # OpenAI 実キー（予測・要約・FB・埋め込み）。統括がダッシュボードに貼る（秘匿）。
+      - key: OPENAI_API_KEY
+        sync: false
+      # バッチ内部トークン（NL-API-16/17 保護）。Render がランダム生成する。
+      # 生成値を Supabase Vault に同名で登録し、pg_net が X-Batch-Token に載せる（cron.sql / §7.2）。
+      - key: BATCH_INTERNAL_TOKEN
+        generateValue: true
