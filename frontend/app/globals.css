@@ -491,6 +491,113 @@ textarea.input-area::placeholder { color: var(--color-text-sub); }
   line-height: 1.6;
   margin: 0 0 4px;
 }
+.ai-suggest-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+/* 2つのアクションを均等幅に。タップ領域は 48px 以上（デザイン5.2 是正 #9）。 */
+.ai-suggest-actions .btn {
+  flex: 1;
+  padding: 0 12px;
+  font-size: 14px;
+  min-height: 48px;
+}
+
+/* ===== フィードバックチャット（デザイン5.6） ===== */
+/* 入力欄を下部固定するため、チャット画面は縦フレックスにして残り高さを埋める。 */
+.screen--chat {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 52px); /* ヘッダ分を差し引く */
+}
+.chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 4px;
+}
+.chat-note {
+  background: var(--color-surface-sub);
+  border-radius: var(--radius-chip);
+  padding: 12px 14px;
+}
+.chat-note .tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary-text);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  padding: 2px 8px;
+  margin-bottom: 6px;
+}
+.chat-note p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-text);
+  margin: 0;
+}
+.msg-row { display: flex; }
+.msg-row.me { justify-content: flex-end; }
+/* 吹き出し: 角丸18px・しっぽなし。アプリ=左/Secondary Light、本人=右/Primary Light。 */
+.bubble {
+  max-width: 78%;
+  padding: 12px 16px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bubble.app {
+  background: var(--color-secondary-light);
+  color: var(--color-text);
+}
+.bubble.me {
+  background: var(--color-primary-light);
+  color: var(--color-primary-text);
+}
+.chat-input-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--color-bg);
+  padding: 10px 0 4px;
+  display: flex;
+  gap: 8px;
+}
+.chat-input {
+  flex: 1;
+  min-height: 48px;
+  border-radius: var(--radius-button);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface-sub);
+  padding: 0 16px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--color-text);
+}
+.chat-input::placeholder { color: var(--color-text-sub); }
+.chat-input:disabled { opacity: 0.6; }
+/* 送信ボタン: 円形・48×48px（タップ領域確保）。Primary Dark 背景＋白（AA適合）。 */
+.send-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-primary-dark);
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ===== ログイン ===== */
 .login-hero {

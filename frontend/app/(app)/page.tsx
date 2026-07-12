@@ -172,13 +172,8 @@ export default function HomePage() {
                 </span>
                 <span className="label">外部情報選択</span>
               </Link>
-              {/* フィードバックチャットは M3 実装。導線だけ置き、準備中を明示する。 */}
-              <div
-                className="menu-item"
-                aria-disabled="true"
-                style={{ opacity: 0.55, cursor: "not-allowed" }}
-                title="準備中（M3）"
-              >
+              {/* フィードバックチャット（M3 で導線接続）。 */}
+              <Link className="menu-item" href="/feedback">
                 <span className="icon" aria-hidden="true">
                   💬
                 </span>
@@ -186,10 +181,8 @@ export default function HomePage() {
                   フィードバック
                   <br />
                   チャット
-                  <br />
-                  <span style={{ fontSize: 11, fontWeight: 400 }}>準備中</span>
                 </span>
-              </div>
+              </Link>
             </nav>
           </>
         )}

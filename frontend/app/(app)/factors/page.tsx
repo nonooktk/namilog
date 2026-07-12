@@ -5,7 +5,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { namilogApi } from "@/lib/api";
-import type { CatalogResponse, CatalogItem, SelectionResponse } from "@/lib/types";
+import type {
+  CatalogResponse,
+  CatalogItem,
+  SelectionResponse,
+  FactorSuggestResponse,
+} from "@/lib/types";
 import { AppHeader } from "@/components/AppHeader";
 
 const MAX = 3;
@@ -18,6 +23,11 @@ export default function FactorsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // AI 入れ替え提案（NL-API-13）。採否は本人。
+  const [suggest, setSuggest] = useState<FactorSuggestResponse | null>(null);
+  const [suggestDismissed, setSuggestDismissed] = useState(false);
+  const [swapping, setSwapping] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -42,6 +52,57 @@ export default function FactorsPage() {
       mounted = false;
     };
   }, []);
+
+  // AI 提案は本体ロードと独立に取得（失敗しても選択機能は使える）。
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const s = await namilogApi.suggestFactor();
+        if (mounted) setSuggest(s);
+      } catch {
+        // 提案は補助機能のため、取得失敗時は枠自体を出さない（握りつぶす）。
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const labelOf = useMemo(() => {
+    const map = new Map(catalog.map((c) => [c.factor_key, c.label]));
+    return (key: string) => map.get(key) ?? key;
+  }, [catalog]);
+
+  // 提案どおりに入れ替える先を組み立てる。現在の active から末尾1つを外し、提案キーを加える。
+  // （バックエンドは「追加候補」だけを返すため、外す指標をカードで明示してから適用する。）
+  const swapPlan = useMemo(() => {
+    if (!suggest?.suggested_key) return null;
+    const key = suggest.suggested_key;
+    const base = initial.filter((k) => k !== key);
+    const removeKey = base.length >= MAX ? base[base.length - 1] : null;
+    const next = removeKey ? [...base.filter((k) => k !== removeKey), key] : [...base, key];
+    return { addKey: key, removeKey, next: next.slice(0, MAX) };
+  }, [suggest, initial]);
+
+  async function applySwap() {
+    if (!swapPlan) return;
+    setSwapping(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const res = (await namilogApi.putSelection(swapPlan.next)) as SelectionResponse;
+      const active = (res.active ?? []).map((a) => a.factor_key);
+      setSelected(active);
+      setInitial(active);
+      setSaved(true);
+      setSuggestDismissed(true); // 反映済みの提案は畳む。
+    } catch {
+      setError("入れ替えできませんでした。少し待って、もう一度試してね。");
+    } finally {
+      setSwapping(false);
+    }
+  }
 
   function toggle(key: string) {
     setSaved(false);
@@ -139,14 +200,51 @@ export default function FactorsPage() {
               {saving ? "保存中…" : "この3つで保存する"}
             </button>
 
-            {/* AI 入れ替え提案は M3。枠だけ置き、優しい文言で準備中を伝える。 */}
-            <section className="ai-suggest-card" aria-label="AIからの提案（準備中）">
-              <span className="tag">AIからの提案</span>
-              <p>ていあんは、もうすこしまってね。</p>
-              <p style={{ color: "var(--color-text)" }}>
-                記録がたまってくると、あなたの調子と関係していそうな情報を見つけて、そっと入れ替えを提案するよ。決めるのはいつもあなただからね。
-              </p>
-            </section>
+            {/* AI 入れ替え提案（NL-API-13）。決めるのは本人（デザイン6.6）。 */}
+            {suggest && !suggestDismissed && (
+              <section className="ai-suggest-card" aria-label="AIからの提案">
+                <span className="tag">AIからの提案</span>
+                {suggest.suggested_key && swapPlan ? (
+                  <>
+                    <p>{suggest.reason}</p>
+                    <p style={{ color: "var(--color-text)" }}>
+                      {swapPlan.removeKey
+                        ? `「${labelOf(swapPlan.removeKey)}」に代えて「${
+                            suggest.suggested_label ?? labelOf(suggest.suggested_key)
+                          }」を使ってみる？決めるのはいつもあなただからね。`
+                        : `「${
+                            suggest.suggested_label ?? labelOf(suggest.suggested_key)
+                          }」を加えてみる？決めるのはいつもあなただからね。`}
+                    </p>
+                    <div className="ai-suggest-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setSuggestDismissed(true)}
+                        disabled={swapping}
+                      >
+                        今のままでいい
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={applySwap}
+                        disabled={swapping}
+                      >
+                        {swapping ? "入れ替え中…" : "入れ替える"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p>いまはていあんはないよ。</p>
+                    <p style={{ color: "var(--color-text)" }}>
+                      記録がたまってくると、あなたの調子と関係していそうな情報を見つけて、そっと入れ替えを提案するね。
+                    </p>
+                  </>
+                )}
+              </section>
+            )}
           </>
         )}
       </main>

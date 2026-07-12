@@ -106,6 +106,53 @@ export interface SelectionResponse {
   history: SelectionHistory[];
 }
 
+// ---- フィードバックチャット（NL-API-14/15: GET/POST /api/feedback） ----
+export type FeedbackRole = "user" | "assistant";
+export interface FeedbackMessage {
+  id: string;
+  prediction_id: string | null;
+  role: FeedbackRole;
+  content: string;
+  created_at: string;
+}
+/** GET /api/feedback。messages は created_at 昇順。 */
+export interface FeedbackListResponse {
+  messages: FeedbackMessage[];
+}
+/** POST /api/feedback。user 保存 → GPT 応答 → assistant 保存の結果。 */
+export interface FeedbackPostResponse {
+  user_message: FeedbackMessage;
+  assistant_message: FeedbackMessage;
+  /** 危機検知が陽性なら true（相談窓口カードをやさしく表示する）。 */
+  crisis_notice: boolean;
+}
+
+// ---- AI 入れ替え提案（NL-API-13: POST /api/factors/suggest） ----
+export interface FactorSuggestResponse {
+  /** 追加を提案する指標キー。候補がなければ null。 */
+  suggested_key: string | null;
+  /** 提案指標のラベル。suggested_key が null のときは省略される。 */
+  suggested_label?: string;
+  /** 提案理由（決定的ヒューリスティックの説明）。 */
+  reason: string;
+  /** 提案時点でアクティブな指標キー。 */
+  current_keys: string[];
+  /** 直近14日の予測 MAE。突合データがなければ null。 */
+  recent_mae: number | null;
+}
+
+// ---- 予測ノート（NL-API-18: GET /api/notes/current） ----
+export interface PredictionNote {
+  version: number;
+  content: string;
+  source: string;
+  created_at: string;
+}
+export interface NotesCurrentResponse {
+  /** 現行ノート。未作成なら null。 */
+  note: PredictionNote | null;
+}
+
 // ---- プロフィール（NL-API-01: GET /api/profile） ----
 export interface Profile {
   id: string;

@@ -5,6 +5,12 @@
 // M2 では骨組みまで。各画面のデータ取得フックはイーブイが後続で実装する。
 
 import { getAccessToken } from "./supabase";
+import type {
+  FeedbackListResponse,
+  FeedbackPostResponse,
+  FactorSuggestResponse,
+  NotesCurrentResponse,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -72,6 +78,21 @@ export const namilogApi = {
   putFactorValues: (date: string, values: Record<string, unknown>) =>
     api.put(`/api/factor-values/${date}`, { values }),
   getHome: () => api.get("/api/home"),
+
+  // ---- M3: FB チャット / AI 提案 / 予測ノート（型付きで返す） ----
+  /** 会話履歴を取得（NL-API-14）。prediction_id 指定でその予測の会話に絞る。昇順。 */
+  getFeedback: (prediction_id?: string | null, limit = 50) =>
+    api.get<FeedbackListResponse>(
+      `/api/feedback${qs({ prediction_id: prediction_id ?? undefined, limit: String(limit) })}`,
+    ),
+  /** 発話を送信（NL-API-15）。user 保存 → GPT 応答 → assistant 保存。空文字は 422。 */
+  postFeedback: (content: string, prediction_id: string | null = null) =>
+    api.post<FeedbackPostResponse>("/api/feedback", { prediction_id, content }),
+  /** AI 入れ替え提案（NL-API-13）。採否は本人が selection 更新で行う。 */
+  suggestFactor: () =>
+    api.post<FactorSuggestResponse>("/api/factors/suggest"),
+  /** 現行の予測ノートを取得（NL-API-18）。未作成なら note=null。 */
+  getCurrentNote: () => api.get<NotesCurrentResponse>("/api/notes/current"),
 };
 
 function qs(params: Record<string, string | undefined>): string {
