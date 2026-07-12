@@ -1,7 +1,8 @@
 "use client";
 
 // 外部情報選択（NL-API-03: GET catalog、NL-API-11: GET selection、NL-API-12: PUT selection）。
-// 12候補チップから3つ選択（ちょうど3件バリデーション）。AI 入れ替え提案枠は M3 のためプレースホルダー。
+// 12候補チップから3つ選択（ちょうど3件バリデーション）。
+// AI 入れ替え提案（NL-API-13）: 提案の採否も「どれと入れ替えるか」も本人が選ぶ2段フロー（デザイン6.6・P2 是正）。
 
 import { useEffect, useMemo, useState } from "react";
 import { namilogApi } from "@/lib/api";
@@ -24,10 +25,13 @@ export default function FactorsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // AI 入れ替え提案（NL-API-13）。採否は本人。
+  // AI 入れ替え提案（NL-API-13）。採否も「どれと入れ替えるか」も本人（デザイン6.6・P2 是正）。
   const [suggest, setSuggest] = useState<FactorSuggestResponse | null>(null);
   const [suggestDismissed, setSuggestDismissed] = useState(false);
   const [swapping, setSwapping] = useState(false);
+  // 「入れ替える」押下後の「どれを外す？」選択モードと、本人が選んだ外す指標。
+  const [choosingRemoval, setChoosingRemoval] = useState(false);
+  const [removeKey, setRemoveKey] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -74,28 +78,48 @@ export default function FactorsPage() {
     return (key: string) => map.get(key) ?? key;
   }, [catalog]);
 
-  // 提案どおりに入れ替える先を組み立てる。現在の active から末尾1つを外し、提案キーを加える。
-  // （バックエンドは「追加候補」だけを返すため、外す指標をカードで明示してから適用する。）
-  const swapPlan = useMemo(() => {
-    if (!suggest?.suggested_key) return null;
-    const key = suggest.suggested_key;
-    const base = initial.filter((k) => k !== key);
-    const removeKey = base.length >= MAX ? base[base.length - 1] : null;
-    const next = removeKey ? [...base.filter((k) => k !== removeKey), key] : [...base, key];
-    return { addKey: key, removeKey, next: next.slice(0, MAX) };
-  }, [suggest, initial]);
+  // 提案で「加える」指標。バックエンドは追加候補だけを返す（外す指標は本人が選ぶ）。
+  const addKey = suggest?.suggested_key ?? null;
+  // 外す候補＝現在アクティブな指標（万一 addKey が含まれていれば除外）。
+  const removalCandidates = useMemo(
+    () => initial.filter((k) => k !== addKey),
+    [initial, addKey],
+  );
+  // アクティブが3件そろっている場合のみ「1つ外す」選択が必要（それ未満なら追加のみ）。
+  const needsRemoval = removalCandidates.length >= MAX;
 
-  async function applySwap() {
-    if (!swapPlan) return;
+  // 「入れ替える」押下: 外す指標を選ぶ必要があれば選択モードへ、不要なら追加のみ適用。
+  function beginSwap() {
+    if (!addKey) return;
+    if (needsRemoval) {
+      setRemoveKey(null);
+      setChoosingRemoval(true);
+    } else {
+      void applySwap(null);
+    }
+  }
+
+  function cancelSwap() {
+    setChoosingRemoval(false);
+    setRemoveKey(null);
+  }
+
+  // 本人が選んだ removeKey を外し、提案キーを加えて selection を更新する（NL-API-12）。
+  async function applySwap(remove: string | null) {
+    if (!addKey) return;
+    const base = remove ? removalCandidates.filter((k) => k !== remove) : removalCandidates;
+    const next = [...base, addKey].slice(0, MAX);
     setSwapping(true);
     setError(null);
     setSaved(false);
     try {
-      const res = (await namilogApi.putSelection(swapPlan.next)) as SelectionResponse;
+      const res = (await namilogApi.putSelection(next)) as SelectionResponse;
       const active = (res.active ?? []).map((a) => a.factor_key);
       setSelected(active);
       setInitial(active);
       setSaved(true);
+      setChoosingRemoval(false);
+      setRemoveKey(null);
       setSuggestDismissed(true); // 反映済みの提案は畳む。
     } catch {
       setError("入れ替えできませんでした。少し待って、もう一度試してね。");
@@ -200,41 +224,90 @@ export default function FactorsPage() {
               {saving ? "保存中…" : "この3つで保存する"}
             </button>
 
-            {/* AI 入れ替え提案（NL-API-13）。決めるのは本人（デザイン6.6）。 */}
+            {/* AI 入れ替え提案（NL-API-13）。採否も外す指標も決めるのは本人（デザイン6.6・P2 是正）。 */}
             {suggest && !suggestDismissed && (
               <section className="ai-suggest-card" aria-label="AIからの提案">
                 <span className="tag">AIからの提案</span>
-                {suggest.suggested_key && swapPlan ? (
-                  <>
-                    <p>{suggest.reason}</p>
-                    <p style={{ color: "var(--color-text)" }}>
-                      {swapPlan.removeKey
-                        ? `「${labelOf(swapPlan.removeKey)}」に代えて「${
-                            suggest.suggested_label ?? labelOf(suggest.suggested_key)
-                          }」を使ってみる？決めるのはいつもあなただからね。`
-                        : `「${
-                            suggest.suggested_label ?? labelOf(suggest.suggested_key)
-                          }」を加えてみる？決めるのはいつもあなただからね。`}
-                    </p>
-                    <div className="ai-suggest-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setSuggestDismissed(true)}
-                        disabled={swapping}
+                {addKey ? (
+                  !choosingRemoval ? (
+                    /* 第1段階: 提案の理由を伝え、試すかどうかを本人が決める。 */
+                    <>
+                      <p>{suggest.reason}</p>
+                      <p style={{ color: "var(--color-text)" }}>
+                        {`「${suggest.suggested_label ?? labelOf(addKey)}」を試してみる？決めるのはいつもあなただからね。`}
+                      </p>
+                      <div className="ai-suggest-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setSuggestDismissed(true)}
+                          disabled={swapping}
+                        >
+                          今のままでいい
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={beginSwap}
+                          disabled={swapping}
+                        >
+                          {needsRemoval ? "入れ替える" : "追加する"}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    /* 第2段階: 今の3つのうち「どれと入れ替えるか」を本人がチップで選ぶ。 */
+                    <>
+                      <p style={{ color: "var(--color-text)" }}>
+                        {`「${suggest.suggested_label ?? labelOf(addKey)}」を使うために、いまの3つのうちどれと入れ替える？外したい情報を選んでね。`}
+                      </p>
+                      <div
+                        className="chip-grid"
+                        role="radiogroup"
+                        aria-label="外す情報を選ぶ"
+                        style={{ marginBottom: 8 }}
                       >
-                        今のままでいい
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={applySwap}
-                        disabled={swapping}
-                      >
-                        {swapping ? "入れ替え中…" : "入れ替える"}
-                      </button>
-                    </div>
-                  </>
+                        {removalCandidates.map((k) => {
+                          const isSel = removeKey === k;
+                          return (
+                            <button
+                              key={k}
+                              type="button"
+                              className={`chip${isSel ? " selected" : ""}`}
+                              role="radio"
+                              aria-checked={isSel}
+                              disabled={swapping}
+                              onClick={() => setRemoveKey(k)}
+                            >
+                              {labelOf(k)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="ai-suggest-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={cancelSwap}
+                          disabled={swapping}
+                        >
+                          やめる
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => applySwap(removeKey)}
+                          disabled={swapping || !removeKey}
+                        >
+                          {swapping
+                            ? "入れ替え中…"
+                            : removeKey
+                              ? `「${labelOf(removeKey)}」と入れ替える`
+                              : "入れ替える"}
+                        </button>
+                      </div>
+                    </>
+                  )
                 ) : (
                   <>
                     <p>いまはていあんはないよ。</p>
