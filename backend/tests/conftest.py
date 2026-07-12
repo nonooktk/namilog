@@ -84,7 +84,29 @@ def _load_harness_config() -> dict | None:
     }
 
 
-_STACK = _load_stack_config() or _load_harness_config()
+# 明示的なハーネス（NAMILOG_TEST_DB_URL）を優先し、無ければ稼働中のローカルスタックを使う。
+# ハーネス優先の理由: (1) CI/ハーメティック実行の決定性、(2) 稼働中の実スタック DB を
+# テストデータで汚さない。実スタック（Mode A）は開発者が明示ハーネスを設定していないときのみ使う。
+_STACK = _load_harness_config() or _load_stack_config()
+
+
+def _detect_jwks_url(api_url: str) -> str:
+    """スタックが非対称鍵（ES256 等）署名なら JWKS の URL を返す。HS256 のみなら空文字。
+
+    CLI 2.109 以降のローカルスタックは ES256/JWKS で JWT を署名する（旧 CLI は HS256 共有秘密）。
+    JWKS エンドポイントに鍵があれば非対称と判断する。
+    """
+    candidate = api_url.rstrip("/") + "/auth/v1/.well-known/jwks.json"
+    try:
+        import json as _json
+        import urllib.request
+
+        with urllib.request.urlopen(candidate, timeout=5) as resp:  # noqa: S310 ローカルのみ
+            data = _json.loads(resp.read().decode())
+        return candidate if data.get("keys") else ""
+    except Exception:  # noqa: BLE001 到達不可なら HS256 にフォールバック
+        return ""
+
 
 # pytest はフェイク LLM で決定的に検証する（実 OpenAI を叩かない）。backend/.env に実キーが
 # 設定されていても、テストセッションでは OPENAI_API_KEY を空に上書きして get_llm_client() が
@@ -94,10 +116,22 @@ os.environ["OPENAI_API_KEY"] = ""
 
 if _STACK:
     os.environ["SUPABASE_DB_URL"] = _STACK["db_url"]
-    os.environ["SUPABASE_JWT_SECRET"] = _STACK["jwt_secret"]
-    os.environ.pop("SUPABASE_JWKS_URL", None)
     if _STACK.get("api_url"):
         os.environ["SUPABASE_URL"] = _STACK["api_url"]
+    # JWT 検証方式の整合（Mode A のみ判定。Mode B ハーネスは HS256 共有秘密で発行するため HS256）。
+    jwks_url = ""
+    if _STACK["mode"] == "A" and _STACK.get("api_url"):
+        jwks_url = _detect_jwks_url(_STACK["api_url"])
+    # 注意: backend/.env に SUPABASE_JWKS_URL / SUPABASE_JWT_SECRET が設定されていても、
+    # 環境変数側で「空文字」を明示代入して上書きする（pop では .env の値が残ってしまうため）。
+    if jwks_url:
+        # 非対称鍵（ES256/JWKS）: app は JWKS で検証する。HS256 秘密は無効化。
+        os.environ["SUPABASE_JWKS_URL"] = jwks_url
+        os.environ["SUPABASE_JWT_SECRET"] = ""
+    else:
+        # HS256 共有秘密（ハーネス or 旧 CLI）。JWKS は無効化。
+        os.environ["SUPABASE_JWT_SECRET"] = _STACK["jwt_secret"]
+        os.environ["SUPABASE_JWKS_URL"] = ""
 
 requires_stack = pytest.mark.skipif(
     _STACK is None,

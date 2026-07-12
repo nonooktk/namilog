@@ -3,6 +3,23 @@
 なみログのログインは Supabase Auth の Google プロバイダで行います（ARCHITECTURE.md §1.3）。
 本ドキュメントはローカル開発と本番での設定手順をまとめます。
 
+> [!important] APIキー形式と JWT 署名方式（Supabase CLI 2.100+ / GoTrue、2026-07-13 実スタック検証で確認）
+> - **新しい API キー形式**: CLI 2.100 以降のローカルスタックは `sb_publishable_...`（公開・フロント用）と
+>   `sb_secret_...`（秘匿・バックエンド/管理用）を発行します。従来の `anon` / `service_role` の
+>   JWT 形式キーの後継です。`.env` への転記は次の対応で行います。
+>   - `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` ← **publishable**（`sb_publishable_...`）
+>   - `SUPABASE_SERVICE_ROLE_KEY` ← **secret**（`sb_secret_...`。フロントに絶対露出しない・秘匿）
+> - **JWT 署名は ES256 / JWKS**: CLI 2.109 の GoTrue はユーザーの access_token を **非対称鍵（ES256）**で
+>   署名し、公開鍵を `http://127.0.0.1:54321/auth/v1/.well-known/jwks.json` で配布します。
+>   バックエンド（`backend/.env`）は **`SUPABASE_JWKS_URL` を設定**して JWKS 検証に切り替えること。
+>   HS256 共有シークレット（`SUPABASE_JWT_SECRET`）前提のままだと、正規トークンでも **401**（署名不一致）に
+>   なります（`app/deps/auth.py` は `SUPABASE_JWKS_URL` があれば ES256/RS256 で検証）。
+>
+> ```bash
+> # ローカルスタックの署名鍵を確認（keys に ES256 の公開鍵があれば JWKS 検証を使う）
+> curl -s http://127.0.0.1:54321/auth/v1/.well-known/jwks.json
+> ```
+
 > [!important] 統括への依頼事項
 > Google OAuth の **Client ID / Client Secret** は Google Cloud Console で発行する秘匿情報です
 > （[[セキュリティ規定]]）。M2 では発行しておらず、Google ログインの E2E 検証は未実施です。

@@ -47,7 +47,7 @@ enable_confirmations = false
 # Google ログイン（本番/実検証は統括のクレデンシャル待ち。docs/GOOGLE_OAUTH.md 参照）。
 # 既定は無効。有効化する場合は .env に SUPABASE_AUTH_GOOGLE_CLIENT_ID / _SECRET を設定する。
 [auth.external.google]
-enabled = false
+enabled = true
 client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
 redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
