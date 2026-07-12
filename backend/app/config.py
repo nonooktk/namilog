@@ -45,8 +45,15 @@ class Settings(BaseSettings):
     # 秘匿値。cron 呼び出し側と共有する（コミット禁止・.env 管理。§7.2）。
     batch_internal_token: str = ""
 
-    # M3 で使用
+    # M3 で使用（OpenAI: 日次予測・コメント要約・FB応答・埋め込み）。
+    # OPENAI_API_KEY 未設定でも起動・テストは通る（LLM 機能のみ degrade）。§7.5。
     openai_api_key: str = ""
+    # 既定エンドポイント／モデル。互換 API・モデル差し替えのため環境変数で上書き可能にする。
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_chat_model: str = "gpt-4o-mini"          # 予測・要約・FB（§4.5）
+    openai_embed_model: str = "text-embedding-3-small"  # 埋め込み1536次元（§2.10）
+    # 外部 API 呼び出しの既定タイムアウト（秒）。バッチが外部障害で無限待ちしないため。
+    external_http_timeout: float = 30.0
 
     @property
     def cors_origin_list(self) -> list[str]:

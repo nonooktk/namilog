@@ -127,6 +127,88 @@ async def put_selection(body: FactorSelectionIn, uid: str = Depends(get_current_
     return await get_selection(uid)  # type: ignore[arg-type]
 
 
+@router.post("/factors/suggest")
+async def suggest_factor(uid: str = Depends(get_current_user)):
+    """AI 入れ替え提案（NL-API-13）。直近の誤差・記録から提案キー＋理由を返す（採否は本人）。
+
+    MVP はルールベースの決定的ヒューリスティック（追加のGPTコスト・非決定性を避ける）:
+      - 直近の予測 MAE（平均絶対誤差）と実測スコアのばらつきを算出。
+      - 現在アクティブでないカタログ指標のうち、sort_order が最も早いものを提案候補にする。
+      - 誤差が大きい/記録が少ないほど「別の指標を試す価値」を理由文で示す。
+    状態は変更しない（提案のみ。実際の入替は NL-API-12 で本人が行う）。
+    """
+    async with user_tx(uid) as conn:
+        active_cur = await conn.execute(
+            "select factor_key from public.external_factors where user_id = %s and is_active",
+            (uid,),
+        )
+        active = [r["factor_key"] for r in await active_cur.fetchall()]
+
+        # 直近14日の予測誤差（突合済みのみ）と実測件数。
+        stat_cur = await conn.execute(
+            """
+            select avg(abs_error)::float as mae, count(*) as scored
+            from public.predictions
+            where user_id = %s and abs_error is not null
+              and target_date >= (current_date - 14)
+            """,
+            (uid,),
+        )
+        stat = await stat_cur.fetchone()
+        rec_cur = await conn.execute(
+            "select count(*) as n from public.daily_records where user_id = %s and record_date >= (current_date - 14)",
+            (uid,),
+        )
+        rec_n = (await rec_cur.fetchone())["n"]
+
+        # アクティブでないカタログ候補（sort_order 昇順で最初の1つ）。
+        cand_cur = await conn.execute(
+            """
+            select factor_key, label, input_type, description
+            from public.factor_catalog
+            where not (factor_key = any(%s))
+            order by sort_order
+            limit 1
+            """,
+            (active or [""],),
+        )
+        candidate = await cand_cur.fetchone()
+
+    mae = stat["mae"] if stat and stat["mae"] is not None else None
+    if candidate is None:
+        return {
+            "suggested_key": None,
+            "reason": "現在すべての指標が選択済みか、提案候補がありません。",
+            "current_keys": active,
+            "recent_mae": mae,
+        }
+
+    if mae is not None and mae >= 2.0:
+        reason = (
+            f"直近14日の予測の平均誤差が {mae:.1f} とやや大きめです。"
+            f"『{candidate['label']}』を加えると、いまの3指標では説明しづらい変動を"
+            "捉えられるかもしれません。"
+        )
+    elif rec_n < 5:
+        reason = (
+            f"直近の記録がまだ少なめ（{rec_n}件）です。生活リズムに関わる"
+            f"『{candidate['label']}』を試すと、傾向が見えやすくなるかもしれません。"
+        )
+    else:
+        reason = (
+            f"予測は比較的安定しています。気分転換に『{candidate['label']}』を試してみると、"
+            "新しい気づきがあるかもしれません（採用はお好みで）。"
+        )
+
+    return {
+        "suggested_key": candidate["factor_key"],
+        "suggested_label": candidate["label"],
+        "reason": reason,
+        "current_keys": active,
+        "recent_mae": mae,
+    }
+
+
 @router.put("/factor-values/{value_date}")
 async def put_factor_values(
     value_date: date, body: FactorValuesIn, uid: str = Depends(get_current_user)

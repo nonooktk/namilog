@@ -86,3 +86,27 @@ class FactorSelectionIn(BaseModel):
 class FactorValuesIn(BaseModel):
     # 例: {"sleep": 6.5, "medication": "ok"} を factor_values.values にマージ
     values: dict[str, Any] = Field(min_length=1)
+
+
+# ---- FB チャット（NL-API-15） ----
+# 発話長の上限。過大入力によるトークン/コスト肥大とインジェクション面積の抑制（§7.6）。
+FEEDBACK_MAX_CHARS = 2000
+
+
+class FeedbackIn(BaseModel):
+    # 紐づく予測（任意）。指定なしでも会話できる。
+    prediction_id: str | None = None
+    content: str = Field(min_length=1, max_length=FEEDBACK_MAX_CHARS)
+
+
+# ---- バッチ（NL-API-16 / 17。内部トークンで保護） ----
+class PredictionRunIn(BaseModel):
+    # 対象ユーザー（省略時は全ユーザー）。target_date 省略時は実行日+1（明日）。
+    user_id: str | None = None
+    target_date: date | None = None
+
+
+class NotesRefreshIn(BaseModel):
+    user_id: str | None = None
+    # 週次ノートの集計基準日（省略時は実行日）。
+    base: date | None = None

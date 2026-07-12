@@ -13,10 +13,28 @@ from psycopg import AsyncConnection
 
 from ..db import user_tx
 from ..deps.auth import get_current_user
+from ..deps.providers import get_llm_client
 from ..schemas import BulkRecordsIn, RecordIn, RecordUpdateIn
+from ..services import embeddings
 from ..services.crisis import detect_crisis_rule_based
+from ..services.llm import LLMClient
 
 router = APIRouter(prefix="/api", tags=["records"])
+
+
+async def _store_embeddings_best_effort(uid: str, items, client: LLMClient | None) -> None:
+    """コメント埋め込みを別トランザクションで保存する（§2.10）。
+
+    ベストエフォート: LLM 未設定（client=None）や外部失敗時は本体書き込みを壊さず黙ってスキップ。
+    埋め込み保存を本体と別 tx にすることで、埋め込み失敗が記録の書き込みを巻き戻さない。
+    """
+    if client is None or not items:
+        return
+    try:
+        async with user_tx(uid) as conn:
+            await embeddings.embed_and_store(conn, uid, items, client)
+    except Exception:  # noqa: BLE001 埋め込みは補助。失敗しても記録は成立させる。
+        return
 
 
 async def _match_prediction(
@@ -42,12 +60,17 @@ async def _match_prediction(
 
 
 @router.post("/records/bulk", status_code=status.HTTP_201_CREATED)
-async def bulk_records(body: BulkRecordsIn, uid: str = Depends(get_current_user)):
-    """過去ログ一括入力（NL-API-02）。同一日は upsert（上書き）。"""
+async def bulk_records(
+    body: BulkRecordsIn,
+    uid: str = Depends(get_current_user),
+    client: LLMClient | None = Depends(get_llm_client),
+):
+    """過去ログ一括入力（NL-API-02）。同一日は upsert（上書き）。投入時に埋め込みをバッチ生成（§2.10）。"""
     inserted = 0
+    embed_items: list[tuple[str, object, str | None]] = []
     async with user_tx(uid) as conn:
         for rec in body.records:
-            await conn.execute(
+            cur = await conn.execute(
                 """
                 insert into public.daily_records (user_id, record_date, actual_score, comment)
                 values (%s, %s, %s, %s)
@@ -55,16 +78,25 @@ async def bulk_records(body: BulkRecordsIn, uid: str = Depends(get_current_user)
                 do update set actual_score = excluded.actual_score,
                               comment = excluded.comment,
                               updated_at = now()
+                returning id, record_date, comment
                 """,
                 (uid, rec.record_date, rec.actual_score, rec.comment),
             )
+            r = await cur.fetchone()
             inserted += 1
+            embed_items.append((str(r["id"]), r["record_date"], r["comment"]))
+    # 埋め込みは配列入力でバッチ化（M1 推奨A）。本体 tx の外・ベストエフォート。
+    await _store_embeddings_best_effort(uid, embed_items, client)
     return {"saved": inserted}
 
 
 @router.post("/records", status_code=status.HTTP_201_CREATED)
-async def create_record(body: RecordIn, uid: str = Depends(get_current_user)):
-    """実測スコア＋コメント登録（NL-API-06）。予測突合・危機検知を同時に行う。"""
+async def create_record(
+    body: RecordIn,
+    uid: str = Depends(get_current_user),
+    client: LLMClient | None = Depends(get_llm_client),
+):
+    """実測スコア＋コメント登録（NL-API-06）。予測突合・危機検知・埋め込み生成を行う。"""
     crisis = detect_crisis_rule_based(body.comment)
     async with user_tx(uid) as conn:
         cur = await conn.execute(
@@ -81,15 +113,21 @@ async def create_record(body: RecordIn, uid: str = Depends(get_current_user)):
         )
         row = await cur.fetchone()
         matched = await _match_prediction(conn, uid, body.record_date, body.actual_score)
-    # 埋め込み生成（§2.10）は M3。ここでは呼び出さない。
+    # 埋め込み生成（§2.10）は本体 tx の外・ベストエフォート（失敗しても記録は成立）。
+    await _store_embeddings_best_effort(
+        uid, [(str(row["id"]), row["record_date"], row["comment"])], client
+    )
     return {"record": row, "matched_prediction": matched, "crisis_notice": crisis}
 
 
 @router.put("/records/{record_date}")
 async def update_record(
-    record_date: date, body: RecordUpdateIn, uid: str = Depends(get_current_user)
+    record_date: date,
+    body: RecordUpdateIn,
+    uid: str = Depends(get_current_user),
+    client: LLMClient | None = Depends(get_llm_client),
 ):
-    """実測の修正（NL-API-07）。突合もやり直す。"""
+    """実測の修正（NL-API-07）。突合もやり直し、コメント変更に合わせ埋め込みも更新する。"""
     crisis = detect_crisis_rule_based(body.comment)
     async with user_tx(uid) as conn:
         cur = await conn.execute(
@@ -108,6 +146,9 @@ async def update_record(
                 detail="指定日の記録が見つかりません",
             )
         matched = await _match_prediction(conn, uid, record_date, body.actual_score)
+    await _store_embeddings_best_effort(
+        uid, [(str(row["id"]), row["record_date"], row["comment"])], client
+    )
     return {"record": row, "matched_prediction": matched, "crisis_notice": crisis}
 
 

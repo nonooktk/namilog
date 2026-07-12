@@ -200,3 +200,39 @@ def user_b():
         pytest.skip("DB 未起動")
     uid, token = _create_user_and_token("userb")
     return {"id": uid, "token": token, "headers": {"Authorization": f"Bearer {token}"}}
+
+
+@pytest.fixture
+def batch_headers(monkeypatch):
+    """バッチ内部トークン（BATCH_INTERNAL_TOKEN）を設定し、正しいヘッダを返す。"""
+    from app.config import settings
+
+    token = "test-batch-token-xyz"
+    monkeypatch.setattr(settings, "batch_internal_token", token)
+    return {"X-Batch-Token": token}
+
+
+@pytest.fixture
+def use_fakes():
+    """フェイク LLM / Open-Meteo を dependency override で差し込むヘルパ。
+
+    テスト内で `llm, meteo = use_fakes()` のように呼び、任意のフェイクを指定できる。
+    テスト終了時に override を自動クリアする。
+    """
+    from _fakes import FakeLLMClient, FakeMeteoGetter
+
+    from app.deps.providers import get_llm_client, get_meteo_getter
+    from app.main import app
+
+    def _install(llm=None, meteo=None):
+        llm = llm or FakeLLMClient()
+        meteo = meteo or FakeMeteoGetter()
+        app.dependency_overrides[get_llm_client] = lambda: llm
+        app.dependency_overrides[get_meteo_getter] = lambda: meteo
+        return llm, meteo
+
+    yield _install
+
+    # get_llm_client / get_meteo_getter は上のスコープに残っているのでそのまま片付ける。
+    app.dependency_overrides.pop(get_llm_client, None)
+    app.dependency_overrides.pop(get_meteo_getter, None)
