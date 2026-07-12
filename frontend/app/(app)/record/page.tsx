@@ -1,0 +1,192 @@
+"use client";
+
+// 体調入力（NL-API-06: POST /api/records、NL-API-08: PUT /api/factor-values）。
+// スコア1〜10（5×2 丸ボタン）＋任意コメント＋アクティブな手入力型指標の入力欄。
+// コメント必須化はしない（デザイン5.5）。crisis_notice が true なら相談窓口を案内する。
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { namilogApi } from "@/lib/api";
+import type { RecordMutationResponse, SelectionResponse } from "@/lib/types";
+import { AppHeader } from "@/components/AppHeader";
+import { SupportCard } from "@/components/SupportCard";
+import { bandLabel } from "@/lib/score";
+import { todayISO } from "@/lib/date";
+
+interface ManualFactor {
+  factor_key: string;
+  label: string;
+  unit: string | null;
+}
+
+export default function RecordPage() {
+  const router = useRouter();
+  const [score, setScore] = useState<number | null>(null);
+  const [comment, setComment] = useState("");
+  const [manualFactors, setManualFactors] = useState<ManualFactor[]>([]);
+  const [factorValues, setFactorValues] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [crisis, setCrisis] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // アクティブな指標のうち手入力型（manual）だけを入力欄に出す（デザイン5.2 / ARCHITECTURE §5.2）。
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const sel = (await namilogApi.getSelection()) as SelectionResponse;
+        if (!mounted) return;
+        setManualFactors(
+          sel.active
+            .filter((a) => a.input_type === "manual")
+            .map((a) => ({
+              factor_key: a.factor_key,
+              label: a.label,
+              unit: a.unit,
+            })),
+        );
+      } catch {
+        // 指標が取れなくても体調入力自体は続行できる（任意項目）。
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  function setFactor(key: string, value: string) {
+    setFactorValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSubmit() {
+    if (score == null) return;
+    setSubmitting(true);
+    setError(null);
+    setCrisis(false);
+    const date = todayISO();
+    try {
+      const res = (await namilogApi.createRecord({
+        record_date: date,
+        actual_score: score,
+        comment: comment.trim() === "" ? null : comment.trim(),
+      })) as RecordMutationResponse;
+
+      // 手入力の外部指標値があればマージ保存（数値化できるものは数値で送る）。
+      const values: Record<string, unknown> = {};
+      for (const [k, raw] of Object.entries(factorValues)) {
+        const t = raw.trim();
+        if (t === "") continue;
+        const num = Number(t);
+        values[k] = t !== "" && !Number.isNaN(num) ? num : t;
+      }
+      if (Object.keys(values).length > 0) {
+        await namilogApi.putFactorValues(date, values);
+      }
+
+      setCrisis(res.crisis_notice);
+      setDone(true);
+    } catch {
+      setError("記録を保存できませんでした。通信状況を確認してもう一度試してね。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <AppHeader title="体調入力" back />
+      <main className="screen">
+        <h1 className="screen-title">今日の記録</h1>
+
+        {done && <p className="toast" role="status">記録したよ。教えてくれてありがとう。</p>}
+        {crisis && <SupportCard />}
+        {error && (
+          <p className="error-note" role="alert">
+            {error}
+          </p>
+        )}
+
+        <div className="card">
+          <label className="field-label" id="score-label">
+            今日の体調は、10点満点でどのくらい？
+          </label>
+          <div
+            className="score-picker"
+            role="group"
+            aria-labelledby="score-label"
+          >
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={`score-btn${score === n ? " selected" : ""}`}
+                aria-pressed={score === n}
+                onClick={() => setScore(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          {score != null && (
+            <div className="field-hint">
+              選択中: {score}点「{bandLabel(score)}」
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <label className="field-label" htmlFor="comment">
+            今日感じたことを、気が向いたら書いてね（空欄でもOK）
+          </label>
+          <textarea
+            id="comment"
+            className="input-area"
+            placeholder="例）朝は少しだるかったけど、午後から落ち着いた"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+          />
+        </div>
+
+        {manualFactors.length > 0 && (
+          <div className="card">
+            <h2 className="card-title">今日の外部指標（任意）</h2>
+            {manualFactors.map((f) => (
+              <div className="factor-field" key={f.factor_key}>
+                <label className="field-label" htmlFor={`factor-${f.factor_key}`}>
+                  {f.label}
+                  {f.unit ? `（${f.unit}）` : ""}
+                </label>
+                <input
+                  id={`factor-${f.factor_key}`}
+                  className="factor-input"
+                  type="text"
+                  inputMode="text"
+                  placeholder={f.unit ? `例）${f.unit} を入力` : "入力（任意）"}
+                  value={factorValues[f.factor_key] ?? ""}
+                  onChange={(e) => setFactor(f.factor_key, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          className="btn btn-primary btn-block"
+          onClick={handleSubmit}
+          disabled={score == null || submitting}
+        >
+          {submitting ? "保存中…" : "記録する"}
+        </button>
+        <div style={{ height: 12 }} />
+        <button
+          className="btn btn-secondary btn-block"
+          onClick={() => router.push("/")}
+          disabled={submitting}
+        >
+          あとで入力する
+        </button>
+      </main>
+    </>
+  );
+}
