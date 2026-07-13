@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "jp.namilog.app",
+      "sha256_cert_fingerprints": [
+        "03:D8:7A:AD:14:44:14:D9:0E:82:4F:DA:30:15:5F:4E:63:0E:D1:94:6F:A6:E5:03:B1:C2:86:4C:CF:A3:48:B7"
+      ]
+    }
+  }
+]
