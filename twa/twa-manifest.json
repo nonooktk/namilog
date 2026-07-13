@@ -1,0 +1,43 @@
+{
+  "packageId": "jp.namilog.app",
+  "host": "namilog.vercel.app",
+  "name": "なみログ",
+  "launcherName": "なみログ",
+  "display": "standalone",
+  "themeColor": "#A78BC9",
+  "themeColorDark": "#000000",
+  "navigationColor": "#A78BC9",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#A78BC9",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#FFFBF6",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://namilog.vercel.app/icon-512.png",
+  "maskableIconUrl": "https://namilog.vercel.app/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./namilog.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://namilog.vercel.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://namilog.vercel.app/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.0.0"
+}

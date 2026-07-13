@@ -1,0 +1,8 @@
+{
+  "name": "namilog-twa",
+  "private": true,
+  "description": "なみログ TWA パッケージング（Bubblewrap）作業ディレクトリ",
+  "dependencies": {
+    "@bubblewrap/cli": "1.24.1"
+  }
+}
