@@ -12,83 +12,20 @@
 // medical_disclaimer_agreed_at を now() 記録する（backend/app/routers/profile.py）。
 // そのため④では { agree_medical_disclaimer:true, timezone } を送る。
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { namilogApi } from "@/lib/api";
-import type { CatalogItem, CatalogResponse } from "@/lib/types";
-import { todayISO } from "@/lib/date";
+import type { CatalogItem, CatalogResponse, Profile } from "@/lib/types";
 import { DisclaimerBar } from "@/components/DisclaimerBar";
+import { BulkRecordEntry } from "@/components/BulkRecordEntry";
+import type { ParsedRecord } from "@/lib/records-import";
 
 const MAX_FACTORS = 3;
-const BULK_MAX = 730; // backend BulkRecordsIn.max_length と一致（約2年分）。
 const TOTAL_STEPS = 4;
 
 // 医療免責文言（デザイン仕様6.4・正本）。
 const DISCLAIMER_TEXT =
   "なみログは、体調の記録と傾向の把握をお手伝いするアプリです。医師による診断や治療の代わりになるものではありません。体調に不安があるときは、医療機関にご相談ください。";
-
-interface ParsedRecord {
-  record_date: string;
-  actual_score: number;
-  comment: string | null;
-}
-interface ParseResult {
-  valid: ParsedRecord[];
-  errorCount: number;
-  capped: boolean; // 730 件を超えて先頭のみ採用したか。
-}
-
-// "YYYY-MM-DD" 形式かつ実在日で、未来日でないか。
-function isValidPastDate(s: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const [y, m, d] = s.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  if (
-    dt.getFullYear() !== y ||
-    dt.getMonth() !== m - 1 ||
-    dt.getDate() !== d
-  ) {
-    return false;
-  }
-  return s <= todayISO(); // 文字列比較で OK（ゼロ埋め ISO のため）。未来日は不可。
-}
-
-function isValidScore(n: number): boolean {
-  return Number.isInteger(n) && n >= 1 && n <= 10;
-}
-
-// CSV「日付,スコア,コメント」をパースする。コメント内のカンマは3分割目以降として保持する。
-function parseCsv(text: string): ParseResult {
-  const valid: ParsedRecord[] = [];
-  let errorCount = 0;
-  const seen = new Set<string>();
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line === "") continue;
-    const parts = line.split(",");
-    const date = (parts[0] ?? "").trim();
-    const scoreStr = (parts[1] ?? "").trim();
-    const comment = parts.slice(2).join(",").trim();
-    const score = Number(scoreStr);
-    if (!isValidPastDate(date) || scoreStr === "" || !isValidScore(score)) {
-      errorCount += 1;
-      continue;
-    }
-    if (seen.has(date)) {
-      // 同一日付は後勝ちで上書き（bulk も upsert のため整合）。
-      const idx = valid.findIndex((v) => v.record_date === date);
-      if (idx >= 0) valid.splice(idx, 1);
-    }
-    seen.add(date);
-    valid.push({
-      record_date: date,
-      actual_score: score,
-      comment: comment === "" ? null : comment,
-    });
-  }
-  const capped = valid.length > BULK_MAX;
-  return { valid: capped ? valid.slice(0, BULK_MAX) : valid, errorCount, capped };
-}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -96,14 +33,39 @@ export default function OnboardingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ステップ②: 過去ログ入力。
-  const [tab, setTab] = useState<"csv" | "manual">("csv");
-  const [csvText, setCsvText] = useState("");
-  const [manual, setManual] = useState<ParsedRecord[]>([]);
-  const [mDate, setMDate] = useState("");
-  const [mScore, setMScore] = useState("");
-  const [mComment, setMComment] = useState("");
-  const [mError, setMError] = useState<string | null>(null);
+  // 逆ガード（機能A）: オンボーディング完了済み（onboarded_at != null）が /onboarding に
+  // 来たら、ウィザードを再表示せずホームへ送る。(app) 側 OnboardingGate（未完了→/onboarding）の
+  // 一方向ガードを壊さず、逆方向を補う。判定失敗時はウィザードを塞がない（degrade）。
+  //   "checking": 判定中（ウィザードは出さない） / "pass": 表示 / "redirect": ホームへ送る途中。
+  const [guard, setGuard] = useState<"checking" | "pass" | "redirect">(
+    "checking",
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const profile = (await namilogApi.getProfile()) as Profile | null;
+        if (!mounted) return;
+        if (profile && profile.onboarded_at != null) {
+          setGuard("redirect");
+          router.replace("/");
+        } else {
+          setGuard("pass");
+        }
+      } catch {
+        // 判定失敗時はウィザードを塞がない（degrade）。
+        if (mounted) setGuard("pass");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
+  // ステップ②: 過去ログ入力。入力 UI・検証は BulkRecordEntry（共通）に委譲し、
+  // ここでは「いま送信対象になる有効レコード」だけを受け取って保持する。
+  const [activeRecords, setActiveRecords] = useState<ParsedRecord[]>([]);
 
   // ステップ③: 外部情報選択。
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -116,42 +78,6 @@ export default function OnboardingPage() {
   // 同一内容の再送を避けるための直近送信シグネチャ（戻る→進むでの二重送信防止）。
   const savedRecordsSig = useRef<string | null>(null);
   const savedSelSig = useRef<string | null>(null);
-
-  const parsed = useMemo(() => parseCsv(csvText), [csvText]);
-
-  // いま送信対象になる有効レコード（アクティブタブ由来）。
-  const activeRecords: ParsedRecord[] = tab === "csv" ? parsed.valid : manual;
-
-  function addManual() {
-    setMError(null);
-    const date = mDate.trim();
-    const score = Number(mScore);
-    if (!isValidPastDate(date)) {
-      setMError("日付は今日以前の実在する日で入力してね（例: 2026-06-01）。");
-      return;
-    }
-    if (mScore.trim() === "" || !isValidScore(score)) {
-      setMError("スコアは1〜10の整数で選んでね。");
-      return;
-    }
-    setManual((prev) => {
-      const next = prev.filter((r) => r.record_date !== date); // 同一日は上書き。
-      next.push({
-        record_date: date,
-        actual_score: score,
-        comment: mComment.trim() === "" ? null : mComment.trim(),
-      });
-      next.sort((a, b) => a.record_date.localeCompare(b.record_date));
-      return next.slice(0, BULK_MAX);
-    });
-    setMDate("");
-    setMScore("");
-    setMComment("");
-  }
-
-  function removeManual(date: string) {
-    setManual((prev) => prev.filter((r) => r.record_date !== date));
-  }
 
   // ステップ③のカタログは初回表示時に読み込む（②から③へ進むタイミング）。
   async function loadCatalog() {
@@ -266,6 +192,16 @@ export default function OnboardingPage() {
     router.replace("/");
   }
 
+  // 逆ガード判定中／リダイレクト中はウィザードを描画しない（完了済みユーザーへの一瞬の点滅を防ぐ）。
+  if (guard !== "pass") {
+    return (
+      <div className="center-fill" role="status" aria-live="polite">
+        <div className="spinner" aria-hidden="true" />
+        <span>読み込み中…</span>
+      </div>
+    );
+  }
+
   return (
     <>
       <main className="screen">
@@ -328,152 +264,8 @@ export default function OnboardingPage() {
               手元に過去の記録があれば、まとめて取り込めるよ。なければ空欄のまま次に進んでも大丈夫。
             </p>
 
-            <div className="tab-row" role="tablist" aria-label="入力方法">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "csv"}
-                className={`tab-btn${tab === "csv" ? " active" : ""}`}
-                onClick={() => setTab("csv")}
-              >
-                CSVで貼り付け
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "manual"}
-                className={`tab-btn${tab === "manual" ? " active" : ""}`}
-                onClick={() => setTab("manual")}
-              >
-                1件ずつ入力
-              </button>
-            </div>
-
-            {tab === "csv" ? (
-              <>
-                <label className="field-label" htmlFor="csv-input">
-                  1行につき「日付,スコア,コメント」の形で貼り付けてね（コメントは省略可）。
-                </label>
-                <textarea
-                  id="csv-input"
-                  className="csv-area"
-                  placeholder={
-                    "2026-06-01,5,少し疲れ気味\n2026-06-02,7,調子良い\n2026-06-03,4,雨で気分沈みがち"
-                  }
-                  value={csvText}
-                  onChange={(e) => setCsvText(e.target.value)}
-                />
-                {csvText.trim() !== "" && (
-                  <>
-                    <p className="field-hint" aria-live="polite">
-                      取り込める行: {parsed.valid.length}件
-                      {parsed.errorCount > 0 &&
-                        `（読み取れなかった行: ${parsed.errorCount}件はスキップするよ）`}
-                      {parsed.capped && `（多いので先頭${BULK_MAX}件までにするね）`}
-                    </p>
-                    {parsed.valid.length > 0 && (
-                      <div className="log-preview" aria-label="取り込みプレビュー">
-                        {parsed.valid.slice(0, 5).map((r) => (
-                          <div className="log-preview-row" key={r.record_date}>
-                            <span className="d">{r.record_date}</span>
-                            <span className="s">{r.actual_score}点</span>
-                            <span className="c">{r.comment ?? ""}</span>
-                          </div>
-                        ))}
-                        {parsed.valid.length > 5 && (
-                          <div className="log-preview-row">
-                            <span className="c">
-                              …ほか {parsed.valid.length - 5}件
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="manual-form">
-                  <div className="manual-field">
-                    <label className="field-label" htmlFor="m-date">
-                      日付
-                    </label>
-                    <input
-                      id="m-date"
-                      className="manual-input"
-                      type="date"
-                      max={todayISO()}
-                      value={mDate}
-                      onChange={(e) => setMDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="manual-field">
-                    <label className="field-label" htmlFor="m-score">
-                      その日の体調（1〜10）
-                    </label>
-                    <select
-                      id="m-score"
-                      className="manual-input"
-                      value={mScore}
-                      onChange={(e) => setMScore(e.target.value)}
-                    >
-                      <option value="">選んでね</option>
-                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="manual-field">
-                    <label className="field-label" htmlFor="m-comment">
-                      コメント（任意）
-                    </label>
-                    <input
-                      id="m-comment"
-                      className="manual-input"
-                      type="text"
-                      placeholder="例）よく眠れた"
-                      value={mComment}
-                      onChange={(e) => setMComment(e.target.value)}
-                    />
-                  </div>
-                  {mError && (
-                    <p className="error-note" role="alert">
-                      {mError}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-block"
-                    onClick={addManual}
-                  >
-                    この日を追加する
-                  </button>
-                </div>
-
-                {manual.length > 0 && (
-                  <div className="log-preview" aria-label="追加した記録">
-                    {manual.map((r) => (
-                      <div className="log-preview-row" key={r.record_date}>
-                        <span className="d">{r.record_date}</span>
-                        <span className="s">{r.actual_score}点</span>
-                        <span className="c">{r.comment ?? ""}</span>
-                        <button
-                          type="button"
-                          className="log-remove"
-                          aria-label={`${r.record_date} の記録を削除`}
-                          onClick={() => removeManual(r.record_date)}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
+            {/* 入力 UI・パース・検証は共通コンポーネントに委譲（/records/import と共有）。 */}
+            <BulkRecordEntry onRecordsChange={setActiveRecords} disabled={busy} />
 
             <div className="onboard-nav">
               <button

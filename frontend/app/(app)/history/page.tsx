@@ -5,6 +5,7 @@
 // 直近30日を既定範囲とする。
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { namilogApi } from "@/lib/api";
 import type {
   ListRecordsResponse,
@@ -51,6 +52,7 @@ export default function HistoryPage() {
   );
   // 実測のある行のみ一覧に出す（予測だけの未来日行は履歴一覧に混ぜない）。
   const listRows = rows.filter((r) => r.actual_score != null);
+  const today = todayISO();
 
   return (
     <>
@@ -114,6 +116,12 @@ export default function HistoryPage() {
                         ? r.comment
                         : "（コメントなし）"}
                     </div>
+                    {/* 当日分だけ、記録の差し替え（修正）へ入れる導線を出す（機能B。当日限定）。 */}
+                    {r.date === today && (
+                      <Link className="history-edit" href="/record">
+                        修正する
+                      </Link>
+                    )}
                   </div>
                 ))
               ) : (
