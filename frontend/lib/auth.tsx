@@ -15,6 +15,7 @@ import {
 import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { GentleLoader } from "@/components/GentleLoader";
 
 interface AuthState {
   session: Session | null;
@@ -57,15 +58,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function FullScreenLoading() {
-  return (
-    <div className="center-fill" role="status" aria-live="polite">
-      <div className="spinner" aria-hidden="true" />
-      <span>読み込み中…</span>
-    </div>
-  );
-}
-
 /** 未ログインなら /login へ送る。ログイン確定までローディングを表示する。 */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth();
@@ -78,7 +70,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }, [loading, session, router]);
 
   if (loading || !session) {
-    return <FullScreenLoading />;
+    // 長引くとき（コールドスタート）はやさしい起床メッセージに切り替わる。
+    return <GentleLoader />;
   }
   return <>{children}</>;
 }

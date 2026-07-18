@@ -12,7 +12,8 @@ import type {
   NotesCurrentResponse,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+// API のベース URL。ウォームアップ ping（lib/warmup.ts）でも同じ値を使うため export する。
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export class ApiError extends Error {
   status: number;

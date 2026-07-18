@@ -7,12 +7,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { namilogApi } from "@/lib/api";
 import { signOut } from "@/lib/supabase";
+import { consumeHome } from "@/lib/prefetch";
 import type { HomeResponse } from "@/lib/types";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { SupportCard } from "@/components/SupportCard";
 import { AppHeader } from "@/components/AppHeader";
+import { useDelayedFlag } from "@/components/GentleLoader";
 import { bandLabel, todayMessage } from "@/lib/score";
 
 function SignOutButton() {
@@ -34,12 +35,15 @@ export default function HomePage() {
   const [home, setHome] = useState<HomeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // 読み込みが長引く（5 秒超）ときだけ、やさしい起床メッセージに切り替える。
+  const slow = useDelayedFlag(5000);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const data = (await namilogApi.getHome()) as HomeResponse;
+        // OnboardingGate で先行起動済みの取得を消費（なければ新規取得）。
+        const data = await consumeHome();
         if (mounted) setHome(data);
       } catch {
         if (mounted) setError("情報を読み込めませんでした。通信状況を確認してね。");
@@ -64,8 +68,10 @@ export default function HomePage() {
         <h1 className="screen-title">おかえりなさい</h1>
 
         {loading && (
-          <div className="card" aria-busy="true">
-            <p className="empty-note">読み込み中…</p>
+          <div className="card" aria-busy="true" role="status" aria-live="polite">
+            <p className="empty-note">
+              {slow ? "サーバーをそっと起こしています…" : "読み込み中…"}
+            </p>
           </div>
         )}
 
