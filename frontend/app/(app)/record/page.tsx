@@ -37,6 +37,11 @@ export default function RecordPage() {
   const [alreadyRecorded, setAlreadyRecorded] = useState(false);
   // 直近の保存が差し替え（既存あり）だったか。完了トーストの文言切り替えに使う。
   const [savedAsEdit, setSavedAsEdit] = useState(false);
+  // 当日プリフィル（listRecords）の読み込み中か（F-1: プリフィル race 対策）。
+  // true の間は送信を抑止し、プリフィル完了前のユーザー入力が後から上書きされる競合を防ぐ。
+  const [recordLoading, setRecordLoading] = useState(true);
+  // 当日プリフィルの取得に失敗したか（F-3）。無言で新規モードへ落とさず控えめに通知する。
+  const [prefillFailed, setPrefillFailed] = useState(false);
 
   // アクティブな指標のうち手入力型（manual）だけを入力欄に出す（デザイン5.2 / ARCHITECTURE §5.2）。
   useEffect(() => {
@@ -85,7 +90,12 @@ export default function RecordPage() {
           setAlreadyRecorded(true);
         }
       } catch {
-        // 取得失敗時は従来どおり新規登録として続行する（プリフィルは補助）。
+        // 取得失敗時も新規登録として続行できる（プリフィルは補助）。ただし F-3:
+        // 無言で degrade せず、控えめに「確認できなかった」旨を通知する。
+        if (mounted) setPrefillFailed(true);
+      } finally {
+        // F-1: 読み込み完了で送信抑止を解除する（成功・失敗どちらでも必ず通す）。
+        if (mounted) setRecordLoading(false);
       }
     })();
     return () => {
@@ -141,6 +151,20 @@ export default function RecordPage() {
         <h1 className="screen-title">
           {alreadyRecorded ? "今日の記録を差し替え" : "今日の記録"}
         </h1>
+
+        {/* F-1: 当日プリフィルの読み込み中を控えめに提示。この間は送信も抑止する。 */}
+        {recordLoading && (
+          <p className="field-hint" aria-live="polite">
+            今日の記録を確認中…
+          </p>
+        )}
+
+        {/* F-3: プリフィル取得に失敗したときは無言にせず、控えめに知らせる（アラートは過剰）。 */}
+        {prefillFailed && !done && (
+          <p className="field-hint" aria-live="polite">
+            今日の記録を確認できなかったよ。新しく記録することはできるよ。
+          </p>
+        )}
 
         {/* 当日すでに記録済みのときは、新規登録ではなく差し替え（上書き）だと明示する（機能B）。 */}
         {alreadyRecorded && !done && (
@@ -231,13 +255,17 @@ export default function RecordPage() {
         <button
           className="btn btn-primary btn-block"
           onClick={handleSubmit}
-          disabled={score == null || submitting}
+          // F-1: プリフィル完了前（recordLoading）は送信を抑止し、読み込み結果が
+          // ユーザー入力を上書きする競合／未確認のまま誤送信するのを防ぐ。
+          disabled={score == null || submitting || recordLoading}
         >
           {submitting
             ? "保存中…"
-            : alreadyRecorded
-              ? "この内容に差し替える"
-              : "記録する"}
+            : recordLoading
+              ? "確認中…"
+              : alreadyRecorded
+                ? "この内容に差し替える"
+                : "記録する"}
         </button>
         <div style={{ height: 12 }} />
         <button

@@ -59,13 +59,19 @@ export function BulkRecordEntry({ onRecordsChange, disabled = false }: Props) {
       setMError("スコアは1〜10の整数で選んでね。");
       return;
     }
-    setManual((prev) =>
-      upsertManualRecord(prev, {
-        record_date: date,
-        actual_score: score,
-        comment: mComment.trim() === "" ? null : mComment.trim(),
-      }),
-    );
+    // F-5: 上限（730件）到達後の新規日付は無言で切り詰めず、追加を拒否してメッセージを出す。
+    const result = upsertManualRecord(manual, {
+      record_date: date,
+      actual_score: score,
+      comment: mComment.trim() === "" ? null : mComment.trim(),
+    });
+    if (result.rejected) {
+      setMError(
+        `記録は${BULK_MAX}件までだよ。これ以上は追加できないから、不要な日を消してからにしてね。`,
+      );
+      return;
+    }
+    setManual(result.records);
     setMDate("");
     setMScore("");
     setMComment("");
@@ -75,15 +81,44 @@ export function BulkRecordEntry({ onRecordsChange, disabled = false }: Props) {
     setManual((prev) => prev.filter((r) => r.record_date !== date));
   }
 
+  // F-6: タブの矢印キー操作（WAI-ARIA Tabs パターン）。左右/上下で移動、Home/End で端へ。
+  // roving tabindex（選択タブのみ tabIndex=0）と併せ、キーボードだけで両タブを行き来できる。
+  const TAB_ORDER = ["csv", "manual"] as const;
+  function onTabKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    const idx = TAB_ORDER.indexOf(tab);
+    let nextIdx: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      nextIdx = (idx + 1) % TAB_ORDER.length;
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      nextIdx = (idx - 1 + TAB_ORDER.length) % TAB_ORDER.length;
+    } else if (e.key === "Home") {
+      nextIdx = 0;
+    } else if (e.key === "End") {
+      nextIdx = TAB_ORDER.length - 1;
+    }
+    if (nextIdx === null) return;
+    e.preventDefault();
+    const nextTab = TAB_ORDER[nextIdx];
+    setTab(nextTab);
+    // 両タブとも常に DOM 上にあるため、フォーカスは即時移動できる（roving tabindex）。
+    document.getElementById(`tab-${nextTab}`)?.focus();
+  }
+
   return (
     <>
       <div className="tab-row" role="tablist" aria-label="入力方法">
+        {/* F-6: 各タブに id と aria-controls を付け、対応する tabpanel と関連付ける。
+            roving tabindex（選択タブのみ 0）＋矢印キーでキーボード操作に対応。 */}
         <button
           type="button"
           role="tab"
+          id="tab-csv"
           aria-selected={tab === "csv"}
+          aria-controls="tabpanel-csv"
+          tabIndex={tab === "csv" ? 0 : -1}
           className={`tab-btn${tab === "csv" ? " active" : ""}`}
           onClick={() => setTab("csv")}
+          onKeyDown={onTabKeyDown}
           disabled={disabled}
         >
           CSVで貼り付け
@@ -91,18 +126,28 @@ export function BulkRecordEntry({ onRecordsChange, disabled = false }: Props) {
         <button
           type="button"
           role="tab"
+          id="tab-manual"
           aria-selected={tab === "manual"}
+          aria-controls="tabpanel-manual"
+          tabIndex={tab === "manual" ? 0 : -1}
           className={`tab-btn${tab === "manual" ? " active" : ""}`}
           onClick={() => setTab("manual")}
+          onKeyDown={onTabKeyDown}
           disabled={disabled}
         >
           1件ずつ入力
         </button>
       </div>
 
-      {tab === "csv" ? (
-        <>
-          <label className="field-label" htmlFor="csv-input">
+      {/* F-6: CSV パネル。非選択時は hidden で隠し、aria-controls の参照先を常に保つ。 */}
+      <div
+        role="tabpanel"
+        id="tabpanel-csv"
+        aria-labelledby="tab-csv"
+        tabIndex={0}
+        hidden={tab !== "csv"}
+      >
+        <label className="field-label" htmlFor="csv-input">
             1行につき「日付,スコア,コメント」の形で貼り付けてね（コメントは省略可）。
           </label>
           <textarea
@@ -141,9 +186,16 @@ export function BulkRecordEntry({ onRecordsChange, disabled = false }: Props) {
               )}
             </>
           )}
-        </>
-      ) : (
-        <>
+      </div>
+
+      {/* F-6: 手入力パネル。非選択時は hidden で隠す。 */}
+      <div
+        role="tabpanel"
+        id="tabpanel-manual"
+        aria-labelledby="tab-manual"
+        tabIndex={0}
+        hidden={tab !== "manual"}
+      >
           <div className="manual-form">
             <div className="manual-field">
               <label className="field-label" htmlFor="m-date">
@@ -227,8 +279,7 @@ export function BulkRecordEntry({ onRecordsChange, disabled = false }: Props) {
               ))}
             </div>
           )}
-        </>
-      )}
+      </div>
     </>
   );
 }
