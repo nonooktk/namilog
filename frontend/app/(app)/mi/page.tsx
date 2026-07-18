@@ -6,25 +6,50 @@
 //  - 冒頭で「治療・診断ではない／専門支援の代替でない／記録は要約のみ」を明示（枠づけ）。
 //  - 危機検知（crisis_notice / status=halted）時は SupportCard を表示し、入力をやさしく閉じる。
 //    自動でセッションへ戻さない（再開導線を出さない）。
+//  - 初期ロードは session.status を必ず確認し、'active' 以外は対話に入れない（防御）。
+//    危機中断（halted）は再読込でも窓口案内を消さない（sessionStorage の安全フラグで復元）。
 //  - セッション境界（boundary_suggested=true）で [もう少し続ける][今日はここまで] を提示。
 //    終了後は新セッション開始導線を出す（無制限チャットにしない）。
 
 import { useEffect, useRef, useState } from "react";
 import { namilogApi, ApiError } from "@/lib/api";
 import type { MiMessage } from "@/lib/types";
+import { MI_BOUNDARY_TURN, MI_SAFETY_KEY, resolveInitialView } from "@/lib/mi";
 import { AppHeader } from "@/components/AppHeader";
 import { SupportCard } from "@/components/SupportCard";
 
 const MAX_CHARS = 2000; // バックエンド MI_MAX_CHARS と一致（超過は 422）。
-const BOUNDARY_TURN = 15; // バックエンド mi_session.BOUNDARY_TURN と一致。
 
-// 画面フェーズ。intro=未開始 / chatting=対話中 / closed=区切り済み。
-type Phase = "loading" | "intro" | "chatting" | "closed";
+// 画面フェーズ。intro=未開始 / chatting=対話中 / halted=危機中断 / closed=区切り済み。
+type Phase = "loading" | "intro" | "chatting" | "halted" | "closed";
 
 // 楽観表示の仮メッセージには負の一時 id を振る。
 let tempSeq = -1;
 
 const UNAVAILABLE = "この対話はいまお休み中です。時間をおいて、もう一度試してね。";
+
+// 危機中断の痕跡（安全フラグ）。機微な発話は保存せず、中断有無のブールのみを sessionStorage に持つ。
+function readSafetyFlag(): boolean {
+  try {
+    return sessionStorage.getItem(MI_SAFETY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeSafetyFlag() {
+  try {
+    sessionStorage.setItem(MI_SAFETY_KEY, "1");
+  } catch {
+    // sessionStorage 不可（プライベートモード等）でも致命ではない。UI 側の crisis 状態で当座は保つ。
+  }
+}
+function clearSafetyFlag() {
+  try {
+    sessionStorage.removeItem(MI_SAFETY_KEY);
+  } catch {
+    // 読み取り側でも try/catch しているため無視してよい。
+  }
+}
 
 export default function MiPage() {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -42,23 +67,49 @@ export default function MiPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 初期ロード: 進行中セッションと直近メッセージ（要約列）を取得。
+  // 必須対応: session.status を必ず確認し、'active' 以外は対話に入れない（resolveInitialView）。
+  // 危機中断（halted）は sessionStorage の安全フラグから復元し、再読込でも窓口案内を消さない。
   useEffect(() => {
     let mounted = true;
     (async () => {
+      const safetyFlag = readSafetyFlag();
       try {
         const res = await namilogApi.getMiSession(50);
         if (!mounted) return;
-        if (res.session) {
-          setMessages(res.messages ?? []);
-          setBoundary(res.session.turn_count >= BOUNDARY_TURN);
-          setPhase("chatting");
-        } else {
-          setPhase("intro");
+        setMessages(res.messages ?? []);
+        const view = resolveInitialView(res.session, safetyFlag);
+        switch (view.phase) {
+          case "chatting":
+            // active セッションを正常取得＝危機は解除。安全フラグを消す。
+            clearSafetyFlag();
+            setCrisis(false);
+            setBoundary(view.boundary);
+            setPhase("chatting");
+            break;
+          case "halted":
+            // 危機中断。窓口案内を出し、入力は開かない。フラグを維持して再読込耐性を持たせる。
+            writeSafetyFlag();
+            setCrisis(true);
+            setPhase("halted");
+            break;
+          case "closed":
+            clearSafetyFlag();
+            setClosingSummary(view.summary);
+            setPhase("closed");
+            break;
+          default:
+            setPhase("intro");
         }
       } catch {
         if (mounted) {
           setLoadError("会話を読み込めませんでした。通信状況を確認してね。");
-          setPhase("intro");
+          // 取得失敗時も、直前に危機中断していれば安全側（halted）を維持する。
+          if (safetyFlag) {
+            setCrisis(true);
+            setPhase("halted");
+          } else {
+            setPhase("intro");
+          }
         }
       }
     })();
@@ -80,6 +131,8 @@ export default function MiPage() {
     setLoadError(null);
     setSendError(null);
     setClosingSummary(null);
+    // 新規開始＝危機は解除。安全フラグを消す。
+    clearSafetyFlag();
     setCrisis(false);
     setBoundary(false);
     try {
@@ -88,7 +141,7 @@ export default function MiPage() {
         // 既存 active があれば冪等開始。メッセージを取り直す。
         const cur = await namilogApi.getMiSession(50);
         setMessages(cur.messages ?? []);
-        setBoundary((cur.session?.turn_count ?? 0) >= BOUNDARY_TURN);
+        setBoundary((cur.session?.turn_count ?? 0) >= MI_BOUNDARY_TURN);
       } else {
         setMessages(res.assistant_message ? [res.assistant_message] : []);
       }
@@ -135,8 +188,15 @@ export default function MiPage() {
         optimistic,
         res.assistant_message,
       ]);
-      if (res.crisis_notice) setCrisis(true);
-      setBoundary(res.boundary_suggested);
+      if (res.crisis_notice) {
+        // 危機検知＝MI 中断。窓口案内へ切り替え、再読込耐性のため安全フラグを立てる。
+        setCrisis(true);
+        setBoundary(false);
+        writeSafetyFlag();
+        setPhase("halted");
+      } else {
+        setBoundary(res.boundary_suggested);
+      }
     } catch (e) {
       // 失敗時は仮の吹き出しを取り消し、入力を戻して再送できるようにする。
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
@@ -178,6 +238,7 @@ export default function MiPage() {
     try {
       const res = await namilogApi.closeMiSession();
       setClosingSummary(res.summary);
+      clearSafetyFlag();
       setBoundary(false);
       setPhase("closed");
     } catch (e) {
@@ -235,7 +296,7 @@ export default function MiPage() {
             </div>
           )}
 
-          {(phase === "chatting" || phase === "closed") && (
+          {(phase === "chatting" || phase === "halted" || phase === "closed") && (
             <>
               {/* 枠づけ（免責）: 対話中は冒頭に常設し、治療・診断でない旨を明示する（設計 §6.4）。 */}
               <div className="chat-note" role="note" aria-label="この対話について">
@@ -262,6 +323,18 @@ export default function MiPage() {
 
               {/* 危機検知時: 窓口カードを表示し、以降の入力を抑制する（設計 §6.2）。 */}
               {crisis && <SupportCard />}
+
+              {/* 危機中断（halted）: 再読込しても窓口案内が消えないよう、状況をやさしく説明する。 */}
+              {phase === "halted" && (
+                <div className="chat-note" role="note" aria-label="対話のお休みについて">
+                  <span className="tag">対話をお休みしています</span>
+                  <p>
+                    直前の対話は、あなたの安全を最優先にして、いったんお休みしました。
+                    気持ちが少し落ち着いたら、また画面を開き直してね。
+                    上の窓口は、いつでも使って大丈夫。
+                  </p>
+                </div>
+              )}
 
               {/* セッション境界の提案（危機時・終了後は出さない）。 */}
               {boundary && !crisis && phase === "chatting" && (
