@@ -618,6 +618,21 @@ textarea.input-area::placeholder { color: var(--color-text-sub); }
 }
 .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ===== こころの整理（MI セッション） ===== */
+/* 開始前・終了後のパネル（案内カード＋ボタンを縦積み）。 */
+.mi-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* 区切り提案の [もう少し続ける][今日はここまで] を横並びで等幅に。 */
+.chat-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.chat-actions .btn { flex: 1; }
+
 /* ===== ログイン ===== */
 .login-hero {
   text-align: center;

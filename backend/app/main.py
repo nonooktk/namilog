@@ -16,6 +16,7 @@ from .routers import (
     factors,
     feedback,
     history,
+    mi,
     home,
     notes,
     predictions,
@@ -49,6 +50,7 @@ app.include_router(factors.router)
 app.include_router(home.router)
 app.include_router(history.router)
 app.include_router(feedback.router)
+app.include_router(mi.router)
 app.include_router(predictions.router)
 app.include_router(notes.router)
 

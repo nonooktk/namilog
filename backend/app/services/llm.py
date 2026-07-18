@@ -34,7 +34,7 @@ class LLMClient(Protocol):
         ...
 
     async def complete_text(
-        self, *, system: str, user: str, max_tokens: int = 400
+        self, *, system: str, user: str, max_tokens: int = 400, model: str | None = None
     ) -> str:
         """自由記述のチャット補完（コメント要約・FB 応答）。テキストを返す。"""
         ...
@@ -112,10 +112,10 @@ class OpenAIClient:
         return json.loads(content)
 
     async def complete_text(
-        self, *, system: str, user: str, max_tokens: int = 400
+        self, *, system: str, user: str, max_tokens: int = 400, model: str | None = None
     ) -> str:
         payload = {
-            "model": self._chat_model,
+            "model": model or self._chat_model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

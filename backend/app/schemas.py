@@ -85,12 +85,22 @@ class FactorValuesIn(BaseModel):
 # ---- FB チャット（NL-API-15） ----
 # 発話長の上限。過大入力によるトークン/コスト肥大とインジェクション面積の抑制（§7.6）。
 FEEDBACK_MAX_CHARS = 2000
+MI_MAX_CHARS = 2000
 
 
 class FeedbackIn(BaseModel):
     # 紐づく予測（任意）。指定なしでも会話できる。
     prediction_id: str | None = None
     content: str = Field(min_length=1, max_length=FEEDBACK_MAX_CHARS)
+
+
+# ---- MI セッション ----
+class MiSessionStartIn(BaseModel):
+    theme: str | None = Field(default=None, max_length=300)
+
+
+class MiMessageIn(BaseModel):
+    content: str = Field(min_length=1, max_length=MI_MAX_CHARS)
 
 
 # ---- バッチ（NL-API-16 / 17。内部トークンで保護） ----
