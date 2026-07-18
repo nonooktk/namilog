@@ -7,7 +7,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { namilogApi } from "@/lib/api";
-import type { RecordMutationResponse, SelectionResponse } from "@/lib/types";
+import type {
+  ListRecordsResponse,
+  RecordMutationResponse,
+  SelectionResponse,
+} from "@/lib/types";
 import { AppHeader } from "@/components/AppHeader";
 import { SupportCard } from "@/components/SupportCard";
 import { bandLabel } from "@/lib/score";
@@ -29,6 +33,15 @@ export default function RecordPage() {
   const [crisis, setCrisis] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 当日すでに記録があるか（機能B）。true なら「記録済み→差し替え」表示に切り替える。
+  const [alreadyRecorded, setAlreadyRecorded] = useState(false);
+  // 直近の保存が差し替え（既存あり）だったか。完了トーストの文言切り替えに使う。
+  const [savedAsEdit, setSavedAsEdit] = useState(false);
+  // 当日プリフィル（listRecords）の読み込み中か（F-1: プリフィル race 対策）。
+  // true の間は送信を抑止し、プリフィル完了前のユーザー入力が後から上書きされる競合を防ぐ。
+  const [recordLoading, setRecordLoading] = useState(true);
+  // 当日プリフィルの取得に失敗したか（F-3）。無言で新規モードへ落とさず控えめに通知する。
+  const [prefillFailed, setPrefillFailed] = useState(false);
 
   // アクティブな指標のうち手入力型（manual）だけを入力欄に出す（デザイン5.2 / ARCHITECTURE §5.2）。
   useEffect(() => {
@@ -48,6 +61,41 @@ export default function RecordPage() {
         );
       } catch {
         // 指標が取れなくても体調入力自体は続行できる（任意項目）。
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // 当日記録のプリフィル（機能B）。既存の一覧 API を今日1日に絞って再利用する
+  // （単日取得 API は追加しない）。RLS は本人トークンでサーバ側解決のまま。
+  // 記録があればスコア・コメントを初期値にし、「差し替え」モードにする。無ければ従来どおり空欄。
+  useEffect(() => {
+    let mounted = true;
+    const today = todayISO();
+    (async () => {
+      try {
+        const res = (await namilogApi.listRecords(
+          today,
+          today,
+        )) as ListRecordsResponse;
+        if (!mounted) return;
+        const todayRow = res.records?.find(
+          (r) => r.date === today && r.actual_score != null,
+        );
+        if (todayRow && todayRow.actual_score != null) {
+          setScore(todayRow.actual_score);
+          setComment(todayRow.comment ?? "");
+          setAlreadyRecorded(true);
+        }
+      } catch {
+        // 取得失敗時も新規登録として続行できる（プリフィルは補助）。ただし F-3:
+        // 無言で degrade せず、控えめに「確認できなかった」旨を通知する。
+        if (mounted) setPrefillFailed(true);
+      } finally {
+        // F-1: 読み込み完了で送信抑止を解除する（成功・失敗どちらでも必ず通す）。
+        if (mounted) setRecordLoading(false);
       }
     })();
     return () => {
@@ -85,7 +133,10 @@ export default function RecordPage() {
       }
 
       setCrisis(res.crisis_notice);
+      setSavedAsEdit(alreadyRecorded); // 保存前に既存があったか＝差し替え保存だったか。
       setDone(true);
+      // 保存後は当日記録が存在する状態になるので、以降は「差し替え」表示に統一する。
+      setAlreadyRecorded(true);
     } catch {
       setError("記録を保存できませんでした。通信状況を確認してもう一度試してね。");
     } finally {
@@ -97,9 +148,39 @@ export default function RecordPage() {
     <>
       <AppHeader title="体調入力" back />
       <main className="screen">
-        <h1 className="screen-title">今日の記録</h1>
+        <h1 className="screen-title">
+          {alreadyRecorded ? "今日の記録を差し替え" : "今日の記録"}
+        </h1>
 
-        {done && <p className="toast" role="status">記録したよ。教えてくれてありがとう。</p>}
+        {/* F-1: 当日プリフィルの読み込み中を控えめに提示。この間は送信も抑止する。 */}
+        {recordLoading && (
+          <p className="field-hint" aria-live="polite">
+            今日の記録を確認中…
+          </p>
+        )}
+
+        {/* F-3: プリフィル取得に失敗したときは無言にせず、控えめに知らせる（アラートは過剰）。 */}
+        {prefillFailed && !done && (
+          <p className="field-hint" aria-live="polite">
+            今日の記録を確認できなかったよ。新しく記録することはできるよ。
+          </p>
+        )}
+
+        {/* 当日すでに記録済みのときは、新規登録ではなく差し替え（上書き）だと明示する（機能B）。 */}
+        {alreadyRecorded && !done && (
+          <p className="error-note" role="note">
+            今日はもう記録があるよ。内容を直して保存すると、今日の記録が
+            <strong>差し替え</strong>られるね。
+          </p>
+        )}
+
+        {done && (
+          <p className="toast" role="status">
+            {savedAsEdit
+              ? "記録を差し替えたよ。教えてくれてありがとう。"
+              : "記録したよ。教えてくれてありがとう。"}
+          </p>
+        )}
         {crisis && <SupportCard />}
         {error && (
           <p className="error-note" role="alert">
@@ -174,9 +255,17 @@ export default function RecordPage() {
         <button
           className="btn btn-primary btn-block"
           onClick={handleSubmit}
-          disabled={score == null || submitting}
+          // F-1: プリフィル完了前（recordLoading）は送信を抑止し、読み込み結果が
+          // ユーザー入力を上書きする競合／未確認のまま誤送信するのを防ぐ。
+          disabled={score == null || submitting || recordLoading}
         >
-          {submitting ? "保存中…" : "記録する"}
+          {submitting
+            ? "保存中…"
+            : recordLoading
+              ? "確認中…"
+              : alreadyRecorded
+                ? "この内容に差し替える"
+                : "記録する"}
         </button>
         <div style={{ height: 12 }} />
         <button

@@ -114,6 +114,17 @@ export default function HomePage() {
                 </div>
               )}
 
+              {/* 当日すでに実測があれば、その場で差し替え（修正）に入れる導線を出す（機能B）。 */}
+              {actualScore != null && (
+                <Link
+                  className="btn btn-secondary btn-block"
+                  href="/record"
+                  style={{ marginTop: 12 }}
+                >
+                  本日の記録を修正する
+                </Link>
+              )}
+
               {/* 明日の予測。M2 は予測未生成のため degrade 表示（§7.5）。 */}
               <div className="tomorrow-block">
                 {tomorrow ? (
@@ -165,6 +176,13 @@ export default function HomePage() {
                   📈
                 </span>
                 <span className="label">詳細履歴</span>
+              </Link>
+              {/* 後追い一括登録への導線（機能A）。オンボ後もいつでも過去ログを足せる。 */}
+              <Link className="menu-item" href="/records/import">
+                <span className="icon" aria-hidden="true">
+                  🗂️
+                </span>
+                <span className="label">過去の記録を追加</span>
               </Link>
               <Link className="menu-item" href="/factors">
                 <span className="icon" aria-hidden="true">
