@@ -10,6 +10,10 @@ import type {
   FeedbackPostResponse,
   FactorSuggestResponse,
   NotesCurrentResponse,
+  MiSessionResponse,
+  MiStartResponse,
+  MiMessageResponse,
+  MiCloseResponse,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
@@ -93,6 +97,19 @@ export const namilogApi = {
     api.post<FactorSuggestResponse>("/api/factors/suggest"),
   /** 現行の予測ノートを取得（NL-API-18）。未作成なら note=null。 */
   getCurrentNote: () => api.get<NotesCurrentResponse>("/api/notes/current"),
+
+  // ---- MI セッション「こころの整理」（/api/mi/*。FB チャットとは別経路） ----
+  /** 進行中セッションと直近メッセージ（要約列）を取得。無ければ session=null。 */
+  getMiSession: (limit = 50) =>
+    api.get<MiSessionResponse>(`/api/mi/session${qs({ limit: String(limit) })}`),
+  /** セッション開始（枠づけの初回発話を返す）。既存 active があれば existing=true。 */
+  startMiSession: (theme: string | null = null) =>
+    api.post<MiStartResponse>("/api/mi/session", { theme }),
+  /** 発話を送信。二重ゲート→面接者応答→state 更新。空文字は 422、有効セッション無しは 409。 */
+  postMiMessage: (content: string) =>
+    api.post<MiMessageResponse>("/api/mi/message", { content }),
+  /** セッションを閉じる（終了要約を生成）。有効セッション無しは 409。 */
+  closeMiSession: () => api.post<MiCloseResponse>("/api/mi/session/close"),
 };
 
 function qs(params: Record<string, string | undefined>): string {
