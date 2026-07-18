@@ -212,6 +212,13 @@ export default function HomePage() {
                   チャット
                 </span>
               </Link>
+              {/* こころの整理（MI セッション）。FB チャットとは別の対話（設計 §3.3）。 */}
+              <Link className="menu-item" href="/mi">
+                <span className="icon" aria-hidden="true">
+                  🧭
+                </span>
+                <span className="label">こころの整理</span>
+              </Link>
             </nav>
           </>
         )}

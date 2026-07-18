@@ -127,6 +127,56 @@ export interface FeedbackPostResponse {
   crisis_notice: boolean;
 }
 
+// ---- MI セッション「こころの整理」（/api/mi/*） ----
+// FB チャットとは別テーブル・別エンドポイント。逐語は保存せず、DB には要約が残る（設計 §5.2）。
+export type MiRole = "user" | "assistant";
+export type MiStatus = "active" | "closed" | "halted";
+export interface MiMessage {
+  id: string;
+  /** GET /session では付与される。POST の返却では省略されることがある。 */
+  session_id?: string;
+  role: MiRole;
+  content: string;
+  /** 危機案内など定型文のみ true（全文保存）。ユーザー発話は常に要約で false。 */
+  is_verbatim: boolean;
+  turn_index: number;
+  created_at: string;
+}
+export interface MiSession {
+  id: string;
+  user_id: string;
+  theme: string | null;
+  status: MiStatus;
+  state: Record<string, unknown>;
+  turn_count: number;
+  crisis_flag: boolean;
+  last_summary: string | null;
+  created_at: string;
+  updated_at: string;
+}
+/** GET /api/mi/session。進行中セッションが無ければ session=null。 */
+export interface MiSessionResponse {
+  session: MiSession | null;
+  messages: MiMessage[];
+}
+/** POST /api/mi/session。既存 active があれば existing=true で assistant_message=null。 */
+export interface MiStartResponse {
+  session: MiSession;
+  assistant_message: MiMessage | null;
+  existing: boolean;
+}
+/** POST /api/mi/message。crisis_notice=true で窓口案内・入力抑制、boundary_suggested=true で区切り提案。 */
+export interface MiMessageResponse {
+  assistant_message: MiMessage;
+  crisis_notice: boolean;
+  boundary_suggested: boolean;
+}
+/** POST /api/mi/session/close。終了要約を返す。 */
+export interface MiCloseResponse {
+  session: MiSession;
+  summary: string;
+}
+
 // ---- AI 入れ替え提案（NL-API-13: POST /api/factors/suggest） ----
 export interface FactorSuggestResponse {
   /** 追加を提案する指標キー。候補がなければ null。 */
