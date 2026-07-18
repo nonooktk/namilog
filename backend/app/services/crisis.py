@@ -148,11 +148,14 @@ CRISIS_JUDGMENT_SYSTEM = (
 )
 
 
-async def detect_crisis_llm(client: "LLMClient | None", text: str | None) -> bool:
+async def detect_crisis_llm(
+    client: "LLMClient | None", text: str | None, *, fail_closed: bool = False
+) -> bool:
     """GPT で文脈的な危機サインを判定する（§7.4-3 の OR 判定の一方）。
 
     - `client` が None（OPENAI_API_KEY 未設定）や `text` が空なら False（ルールベースのみに degrade）。
-    - LLM 呼び出しの失敗は False にフォールバックし、危機判定全体（rule OR gpt）を壊さない。
+    - LLM 呼び出しの失敗は既定では False にフォールバックし、危機判定全体（rule OR gpt）を壊さない。
+      `fail_closed=True` は、MI のように判定障害そのものを安全側へ倒す経路向け。
       ※ false negative を避ける思想だが、GPT 障害時にルールベース側が残るため安全側は保たれる。
     """
     if client is None or not (text and text.strip()):
@@ -165,5 +168,5 @@ async def detect_crisis_llm(client: "LLMClient | None", text: str | None) -> boo
             schema=CRISIS_JUDGMENT_SCHEMA,
         )
         return bool(result.get("crisis"))
-    except Exception:  # noqa: BLE001 GPT 失敗はルールベースに委ねる（degrade）
-        return False
+    except Exception:  # noqa: BLE001
+        return fail_closed

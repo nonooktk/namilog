@@ -76,7 +76,9 @@ class FakeLLMClient:
             "crisis_flag": self.crisis_flag,
         }
 
-    async def complete_text(self, *, system: str, user: str, max_tokens: int = 400) -> str:
+    async def complete_text(
+        self, *, system: str, user: str, max_tokens: int = 400, model: str | None = None
+    ) -> str:
         self.text_calls.append(user)
         # ノート更新か FB 応答かを system で大まかに判別（決定的な戻り値）。
         if "箇条書き" in system or "パターン" in system:

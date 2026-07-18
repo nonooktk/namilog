@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     # 既定エンドポイント／モデル。互換 API・モデル差し替えのため環境変数で上書き可能にする。
     openai_base_url: str = "https://api.openai.com/v1"
     openai_chat_model: str = "gpt-4o-mini"          # 予測・要約・FB（§4.5）
+    # MI 専用モデル。空文字なら通常の chat model を用いる。
+    mi_chat_model: str = ""
     openai_embed_model: str = "text-embedding-3-small"  # 埋め込み1536次元（§2.10）
     # 外部 API 呼び出しの既定タイムアウト（秒）。バッチが外部障害で無限待ちしないため。
     external_http_timeout: float = 30.0
@@ -58,6 +60,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def mi_model(self) -> str:
+        return self.mi_chat_model or self.openai_chat_model
 
     def assert_secure_jwt_config(self) -> None:
         """本番系での安全でない JWT 構成を起動時に拒否する（R3・セキュリティ規定4 / §1.3・§7.2）。
