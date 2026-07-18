@@ -169,6 +169,8 @@ h2.card-title {
   cursor: pointer;
   transition: filter .15s ease;
 }
+/* リンク（<a>）を btn として使う場合に既定の下線を消す（ホーム/履歴の導線ボタン）。 */
+a.btn { text-decoration: none; }
 .btn:hover { filter: brightness(0.97); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
 .btn-primary { background: var(--color-primary-dark); color: #fff; }
@@ -424,6 +426,23 @@ textarea.input-area::placeholder { color: var(--color-text-sub); }
   flex: 1;
   line-height: 1.5;
 }
+/* 履歴一覧の当日行に出す「修正する」リンク（機能B の当日再編集導線）。 */
+.history-edit {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary-text);
+  text-decoration: none;
+  padding: 6px 12px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid var(--color-primary-light);
+  border-radius: var(--radius-chip);
+  background: var(--color-surface);
+}
+.history-edit:hover { filter: brightness(0.98); }
 
 .legend-row {
   display: flex;
