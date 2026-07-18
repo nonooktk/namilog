@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, signInWithGoogle } from "@/lib/supabase";
+import { warmUpApi } from "@/lib/warmup";
 import { DisclaimerBar } from "@/components/DisclaimerBar";
 
 export default function LoginPage() {
@@ -17,6 +18,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     let mounted = true;
+    // ログイン画面表示と同時に API を起こしておく（Render Free のコールドスタート先行）。
+    // fire-and-forget: 失敗は無視・ユーザーには見せない。
+    warmUpApi();
     supabase.auth.getSession().then(({ data }) => {
       if (mounted && data.session) router.replace("/");
     });

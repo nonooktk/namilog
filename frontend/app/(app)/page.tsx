@@ -7,12 +7,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { namilogApi } from "@/lib/api";
 import { signOut } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
+import { consumeHome } from "@/lib/prefetch";
 import type { HomeResponse } from "@/lib/types";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { SupportCard } from "@/components/SupportCard";
 import { AppHeader } from "@/components/AppHeader";
+import { useDelayedFlag } from "@/components/GentleLoader";
 import { bandLabel, todayMessage } from "@/lib/score";
 
 function SignOutButton() {
@@ -31,15 +33,22 @@ function SignOutButton() {
 }
 
 export default function HomePage() {
+  // RequireAuth の内側なのでセッションは確定済み。先行取得の照合に userId を使う。
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   const [home, setHome] = useState<HomeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // 読み込みが長引く（5 秒超）ときだけ、やさしい起床メッセージに切り替える。
+  const slow = useDelayedFlag(5000);
 
   useEffect(() => {
+    if (!userId) return;
     let mounted = true;
     (async () => {
       try {
-        const data = (await namilogApi.getHome()) as HomeResponse;
+        // OnboardingGate で先行起動済みの取得を消費（現ユーザー分のみ。なければ新規取得）。
+        const data = await consumeHome(userId);
         if (mounted) setHome(data);
       } catch {
         if (mounted) setError("情報を読み込めませんでした。通信状況を確認してね。");
@@ -50,7 +59,7 @@ export default function HomePage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [userId]);
 
   const actualScore = home?.today.actual?.actual_score ?? null;
   const todayPredScore = home?.today.prediction?.predicted_score ?? null;
@@ -64,8 +73,10 @@ export default function HomePage() {
         <h1 className="screen-title">おかえりなさい</h1>
 
         {loading && (
-          <div className="card" aria-busy="true">
-            <p className="empty-note">読み込み中…</p>
+          <div className="card" aria-busy="true" role="status" aria-live="polite">
+            <p className="empty-note">
+              {slow ? "サーバーをそっと起こしています…" : "読み込み中…"}
+            </p>
           </div>
         )}
 
