@@ -15,6 +15,7 @@ import {
 import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { clearPrefetchedHome } from "./prefetch";
 import { GentleLoader } from "@/components/GentleLoader";
 
 interface AuthState {
@@ -41,7 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = supabase.auth.onAuthStateChange((event, s) => {
+      // ログアウト時は未消費のホーム先行取得を破棄し、次にログインするユーザーへ
+      // 前ユーザーのデータを持ち越さない（セッション跨ぎのデータ分離）。
+      if (event === "SIGNED_OUT") clearPrefetchedHome();
       setSession(s);
       setLoading(false);
     });

@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AuthProvider, RequireAuth } from "@/lib/auth";
+import { AuthProvider, RequireAuth, useAuth } from "@/lib/auth";
 import { DisclaimerBar } from "@/components/DisclaimerBar";
 import { GentleLoader } from "@/components/GentleLoader";
 import { namilogApi } from "@/lib/api";
@@ -24,6 +24,9 @@ import type { Profile } from "@/lib/types";
  */
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  // RequireAuth の内側なのでセッションは確定済み。先行取得の紐付けに userId を使う。
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   // "checking": 判定中 / "pass": 通す / "redirect": /onboarding へ送る途中。
   const [phase, setPhase] = useState<"checking" | "pass" | "redirect">(
     "checking",
@@ -32,8 +35,9 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
     // ホーム取得を profile 取得と並列に先行起動して総待ち時間を縮める。
+    // 現セッションの userId に紐付ける（セッション跨ぎの再利用を防ぐ）。
     // /onboarding へ送ると確定した場合は破棄する（この取得は degrade 前提の保険）。
-    prefetchHome();
+    if (userId) prefetchHome(userId);
     (async () => {
       try {
         const profile = (await namilogApi.getProfile()) as Profile | null;
@@ -53,7 +57,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [router]);
+  }, [router, userId]);
 
   if (phase !== "pass") {
     return <GentleLoader />;

@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
 import { consumeHome } from "@/lib/prefetch";
 import type { HomeResponse } from "@/lib/types";
 import { ScoreBadge } from "@/components/ScoreBadge";
@@ -32,6 +33,9 @@ function SignOutButton() {
 }
 
 export default function HomePage() {
+  // RequireAuth の内側なのでセッションは確定済み。先行取得の照合に userId を使う。
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   const [home, setHome] = useState<HomeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,11 +43,12 @@ export default function HomePage() {
   const slow = useDelayedFlag(5000);
 
   useEffect(() => {
+    if (!userId) return;
     let mounted = true;
     (async () => {
       try {
-        // OnboardingGate で先行起動済みの取得を消費（なければ新規取得）。
-        const data = await consumeHome();
+        // OnboardingGate で先行起動済みの取得を消費（現ユーザー分のみ。なければ新規取得）。
+        const data = await consumeHome(userId);
         if (mounted) setHome(data);
       } catch {
         if (mounted) setError("情報を読み込めませんでした。通信状況を確認してね。");
@@ -54,7 +59,7 @@ export default function HomePage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [userId]);
 
   const actualScore = home?.today.actual?.actual_score ?? null;
   const todayPredScore = home?.today.prediction?.predicted_score ?? null;
