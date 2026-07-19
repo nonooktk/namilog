@@ -18,6 +18,7 @@ import { namilogApi } from "@/lib/api";
 import type { CatalogItem, CatalogResponse, Profile } from "@/lib/types";
 import { DisclaimerBar } from "@/components/DisclaimerBar";
 import { BulkRecordEntry } from "@/components/BulkRecordEntry";
+import { IwashiTaro, IWASHI } from "@/components/IwashiTaro";
 import type { ParsedRecord } from "@/lib/records-import";
 
 const MAX_FACTORS = 3;
@@ -223,6 +224,11 @@ export default function OnboardingPage() {
             />
           ))}
         </div>
+
+        {/* イワシ太郎（1画面1箇所）。免責同意ステップ(④)は静かなトーン、それ以外は通常。§11.3 */}
+        <IwashiTaro
+          message={step === 4 ? IWASHI.onboardingDisclaimer : IWASHI.onboardingNormal}
+        />
 
         {error && (
           <p className="error-note" role="alert">

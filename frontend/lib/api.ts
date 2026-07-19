@@ -14,6 +14,7 @@ import type {
   MiStartResponse,
   MiMessageResponse,
   MiCloseResponse,
+  DigestResponse,
 } from "./types";
 
 // API のベース URL。ウォームアップ ping（lib/warmup.ts）でも同じ値を使うため export する。
@@ -98,6 +99,13 @@ export const namilogApi = {
     api.post<FactorSuggestResponse>("/api/factors/suggest"),
   /** 現行の予測ノートを取得（NL-API-18）。未作成なら note=null。 */
   getCurrentNote: () => api.get<NotesCurrentResponse>("/api/notes/current"),
+
+  /**
+   * 期間ダイジェストを生成/取得（NL-API-19）。保存済みがあり force でなければ再利用（cached=true）。
+   * from>to・92日超・未来日・期間内実測0件は 422、LLM 未設定は 503（優しい文言へ degrade）。
+   */
+  generateDigest: (from: string, to: string, force = false) =>
+    api.post<DigestResponse>("/api/digest", { from, to, force }),
 
   // ---- MI セッション「こころの整理」（/api/mi/*。FB チャットとは別経路） ----
   /** 進行中セッションと直近メッセージ（要約列）を取得。無ければ session=null。 */

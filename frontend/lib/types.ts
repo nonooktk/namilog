@@ -203,6 +203,31 @@ export interface NotesCurrentResponse {
   note: PredictionNote | null;
 }
 
+// ---- 期間ダイジェスト（NL-API-19: POST /api/digest） ----
+/** ダイジェスト内の1日分（良かった日／悪かった日の共通形式）。§4.6 */
+export interface DigestDay {
+  /** YYYY-MM-DD */
+  date: string;
+  /** その日の様子（≤120字）。 */
+  note: string;
+  /** 効いた/勧める対処（≤120字）。 */
+  coping: string;
+}
+/** POST /api/digest のレスポンス。content（summary/good_days/bad_days）＋メタ情報。 */
+export interface DigestResponse {
+  /** 期間全体の体調ダイジェスト（≤300字・やさしい口調・参考情報）。 */
+  summary: string;
+  /** 調子の良かった日と対処（最大3件）。 */
+  good_days: DigestDay[];
+  /** 調子の悪かった日と対処（最大3件）。 */
+  bad_days: DigestDay[];
+  /** 保存済みを再利用した場合 true（再生成していない）。 */
+  cached: boolean;
+  model: string;
+  period_from: string;
+  period_to: string;
+}
+
 // ---- プロフィール（NL-API-01: GET /api/profile） ----
 export interface Profile {
   id: string;

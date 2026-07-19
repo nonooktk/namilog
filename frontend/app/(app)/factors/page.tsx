@@ -13,6 +13,7 @@ import type {
   FactorSuggestResponse,
 } from "@/lib/types";
 import { AppHeader } from "@/components/AppHeader";
+import { IwashiTaro, IWASHI } from "@/components/IwashiTaro";
 
 const MAX = 3;
 
@@ -169,6 +170,10 @@ export default function FactorsPage() {
       <AppHeader title="外部情報選択" back />
       <main className="screen">
         <h1 className="screen-title">予測に使う情報</h1>
+
+        {/* イワシ太郎（1画面1箇所・控えめな一言）。§11.3 外部情報選択・通常 */}
+        <IwashiTaro message={IWASHI.factors} variant="sub" />
+
         <p
           className="field-hint"
           style={{ marginTop: -6, marginBottom: 12, lineHeight: 1.6 }}

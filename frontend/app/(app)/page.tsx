@@ -15,7 +15,8 @@ import { ScoreBadge } from "@/components/ScoreBadge";
 import { SupportCard } from "@/components/SupportCard";
 import { AppHeader } from "@/components/AppHeader";
 import { useDelayedFlag } from "@/components/GentleLoader";
-import { bandLabel, todayMessage } from "@/lib/score";
+import { IwashiTaro, IWASHI } from "@/components/IwashiTaro";
+import { bandLabel, scoreBand, todayMessage } from "@/lib/score";
 
 function SignOutButton() {
   const router = useRouter();
@@ -65,6 +66,21 @@ export default function HomePage() {
   const todayPredScore = home?.today.prediction?.predicted_score ?? null;
   const labelScore = actualScore ?? todayPredScore;
   const tomorrow = home?.tomorrow.prediction ?? null;
+
+  // イワシ太郎（1画面1箇所。デザイン §11.3/§11.4）。
+  // スコア帯（本日の実測＞予測、無ければ明日の予測）で高/中/低の文言を出し分ける。
+  // 危機案内カード表示中は「キュン…」の静かな文言のみに切り替える（§11.4-2/4）。
+  const bandScore = labelScore ?? tomorrow?.predicted_score ?? null;
+  const iwashiMessage =
+    bandScore == null
+      ? null
+      : home?.crisis_notice
+        ? IWASHI.homeLow
+        : scoreBand(bandScore) === "high"
+          ? IWASHI.homeHigh
+          : scoreBand(bandScore) === "mid"
+            ? IWASHI.homeMid
+            : IWASHI.homeLow;
 
   return (
     <>
@@ -173,7 +189,16 @@ export default function HomePage() {
               </div>
             </section>
 
-            {home.crisis_notice && <SupportCard />}
+            {home.crisis_notice ? (
+              <>
+                {/* 危機案内カードを最優先で表示。イワシ太郎は静かな文言・小サイズで、
+                    カードより下・目立たない配置にする（§11.4-2/3/4）。 */}
+                <SupportCard />
+                {iwashiMessage && <IwashiTaro message={iwashiMessage} size="sm" />}
+              </>
+            ) : (
+              iwashiMessage && <IwashiTaro message={iwashiMessage} size="md" />
+            )}
 
             <nav className="menu-grid" aria-label="メニュー">
               <Link className="menu-item" href="/record">

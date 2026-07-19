@@ -12,6 +12,7 @@ import { ApiError } from "@/lib/api";
 import type { FeedbackMessage, PredictionNote } from "@/lib/types";
 import { AppHeader } from "@/components/AppHeader";
 import { SupportCard } from "@/components/SupportCard";
+import { IwashiTaro, IWASHI } from "@/components/IwashiTaro";
 
 const MAX_CHARS = 2000; // バックエンド FEEDBACK_MAX_CHARS と一致（超過は 422）。
 
@@ -116,6 +117,10 @@ export default function FeedbackPage() {
       <AppHeader title="ふりかえり" back />
       <main className="screen screen--chat">
         <h1 className="screen-title">ふりかえり</h1>
+
+        {/* イワシ太郎（1画面1箇所・控えめな一言）。危機案内表示中は静かな運用のため出さない
+            （§11.4-2。承認済みの静かな文言が本画面に無いため非表示にする）。§11.3 */}
+        {!crisis && <IwashiTaro message={IWASHI.feedback} variant="sub" />}
 
         <div className="chat-scroll" ref={scrollRef} role="log" aria-live="polite" aria-label="会話">
           {loading && <p className="empty-note">読み込み中…</p>}

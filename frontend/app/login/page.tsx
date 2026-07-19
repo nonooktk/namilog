@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { supabase, signInWithGoogle } from "@/lib/supabase";
 import { warmUpApi } from "@/lib/warmup";
 import { DisclaimerBar } from "@/components/DisclaimerBar";
+import { IwashiTaro, IWASHI } from "@/components/IwashiTaro";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -70,6 +71,9 @@ export default function LoginPage() {
       </div>
 
       <main className="screen">
+        {/* イワシ太郎のあいさつ（1画面1箇所。デザイン §11.3 ログイン・通常）。 */}
+        <IwashiTaro message={IWASHI.login} />
+
         {error && (
           <p className="error-note" role="alert">
             {error}
