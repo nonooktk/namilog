@@ -48,6 +48,10 @@ class FakeLLMClient:
         rationale: str = "直近の記録と外部指標を参考にした見立てです。",
         note_text: str = "・気圧が下がった翌日に落ち込みやすい傾向。\n・睡眠が短い週は不調が続きやすい。",
         reply_text: str = "教えてくれてありがとうございます。少しずつでも大丈夫です。",
+        digest_summary: str = "この期間は全体として穏やかに過ごせた日が多かったみたいだね。",
+        digest_good_days: list[dict[str, str]] | None = None,
+        digest_bad_days: list[dict[str, str]] | None = None,
+        raise_on_digest: Exception | None = None,
     ) -> None:
         self.predicted_score = predicted_score
         self.crisis_flag = crisis_flag
@@ -57,6 +61,20 @@ class FakeLLMClient:
         self.rationale = rationale
         self.note_text = note_text
         self.reply_text = reply_text
+        # 期間ダイジェスト（schema_name="namilog_digest"・§4.6）が返す決定的な content。
+        self.digest_summary = digest_summary
+        self.digest_good_days = (
+            digest_good_days
+            if digest_good_days is not None
+            else [{"date": "2021-05-01", "note": "よく眠れた", "coping": "早めに休んだ"}]
+        )
+        self.digest_bad_days = (
+            digest_bad_days
+            if digest_bad_days is not None
+            else [{"date": "2021-05-03", "note": "少しだるかった", "coping": "無理せず過ごした"}]
+        )
+        # 設定時、digest 生成の complete_json でこの例外を送出する（通信障害等の再現。§7.5）。
+        self.raise_on_digest = raise_on_digest
         self.embed_calls: list[list[str]] = []
         self.json_calls: list[str] = []
         self.text_calls: list[str] = []
@@ -68,6 +86,16 @@ class FakeLLMClient:
         # 危機判定（§7.4-3・R1）は crisis スキーマで呼ばれる。
         if schema_name == "namilog_crisis":
             return {"crisis": self.gpt_crisis_judgment}
+        # 期間ダイジェスト（§4.6）。
+        if schema_name == "namilog_digest":
+            if self.raise_on_digest is not None:
+                # 通信エラー・タイムアウト・不正レスポンス等の外部障害を再現（#2）。
+                raise self.raise_on_digest
+            return {
+                "summary": self.digest_summary,
+                "good_days": self.digest_good_days,
+                "bad_days": self.digest_bad_days,
+            }
         return {
             "predicted_score": self.predicted_score,
             "advice": self.advice,

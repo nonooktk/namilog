@@ -10,12 +10,16 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .timeutils import app_today
 
 # バルク投入の件数上限（ARCHITECTURE.md §3.1「例:1回≤730件」＝約2年分。R2）。
 BULK_MAX_RECORDS = 730
+
+# 期間ダイジェストの期間上限（ARCHITECTURE.md §3.2 / §4.6「期間上限は92日」）。
+# 期間は両端含む日数で数える（from と to が同日なら1日）。
+DIGEST_MAX_DAYS = 92
 
 
 def ensure_not_future(d: date) -> date:
@@ -117,3 +121,47 @@ class NotesRefreshIn(BaseModel):
     # 冪等化の明示オーバーライド（既定 False）。同一 ISO 週に weekly_batch 版が既にあれば通常は
     # スキップするが、force=True で強制的に新版を作る（手動再生成・補正用）。P1（§7.5.1）。
     force: bool = False
+
+
+# ---- 期間ダイジェスト（NL-API-19: POST /api/digest。§4.6） ----
+class DigestIn(BaseModel):
+    """期間ダイジェストの生成/取得リクエスト（§3.2・§4.6）。
+
+    バリデーション（いずれも違反時は 422）:
+      - `from <= to`（開始が終了より後は不可）。
+      - `to <= today`（本人 timezone ＝ app_today() 基準の未来日を拒否。§3.2 未来日ガード）。
+      - 期間上限は 92 日（両端含む日数。超過は拒否）。
+    ※ 期間内の実測 0 件（422）は DB 参照が要るためルーター側で判定する。
+    """
+
+    # `from` は Python の予約語のため属性名は from_、JSON フィールド名は from。
+    # Field(alias=...) は FastAPI の body モデル再処理時に pydantic の警告を誘発するため使わず、
+    # mode="before" バリデータで JSON の "from" を "from_" に写して受ける。
+    from_: date = Field(default=..., description="期間開始日（JSON キーは from）")
+    to: date
+    # 保存済みがあっても強制的に再生成して upsert する（既定 False＝保存済みを再利用）。
+    force: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _map_reserved_from(cls, data: Any) -> Any:
+        # JSON の予約語キー "from" を属性名 "from_" へ写す（alias を使わないための前処理）。
+        if isinstance(data, dict) and "from" in data and "from_" not in data:
+            data = {**data, "from_": data["from"]}
+        return data
+
+    @field_validator("to")
+    @classmethod
+    def _to_not_future(cls, v: date) -> date:
+        # to の未来日ガード（from <= to のため from も自動的に未来日でなくなる）。
+        return ensure_not_future(v)
+
+    @model_validator(mode="after")
+    def _check_range(self) -> "DigestIn":
+        if self.from_ > self.to:
+            raise ValueError("from は to 以前の日付を指定してください")
+        # 両端含む日数。同日なら 1 日。
+        span_days = (self.to - self.from_).days + 1
+        if span_days > DIGEST_MAX_DAYS:
+            raise ValueError(f"期間は最大 {DIGEST_MAX_DAYS} 日までです")
+        return self

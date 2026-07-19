@@ -14,6 +14,7 @@ import type {
 } from "@/lib/types";
 import { AppHeader } from "@/components/AppHeader";
 import { SupportCard } from "@/components/SupportCard";
+import { IwashiTaro, IWASHI } from "@/components/IwashiTaro";
 import { bandLabel } from "@/lib/score";
 import { todayISO } from "@/lib/date";
 
@@ -151,6 +152,12 @@ export default function RecordPage() {
         <h1 className="screen-title">
           {alreadyRecorded ? "今日の記録を差し替え" : "今日の記録"}
         </h1>
+
+        {/* イワシ太郎（1画面1箇所）。登録完了でねぎらいへ切替。危機案内表示中ははしゃいだ文言を
+            出さない（§11.4-2）ため、SupportCard を出す crisis 時は表示しない。§11.3 */}
+        {!crisis && (
+          <IwashiTaro message={done ? IWASHI.recordDone : IWASHI.recordBefore} />
+        )}
 
         {/* F-1: 当日プリフィルの読み込み中を控えめに提示。この間は送信も抑止する。 */}
         {recordLoading && (

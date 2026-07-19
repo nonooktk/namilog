@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .db import close_pool
 from .routers import (
+    digest,
     factors,
     feedback,
     history,
@@ -53,6 +54,7 @@ app.include_router(feedback.router)
 app.include_router(mi.router)
 app.include_router(predictions.router)
 app.include_router(notes.router)
+app.include_router(digest.router)
 
 
 @app.get("/health", tags=["meta"])
