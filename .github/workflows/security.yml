@@ -1,0 +1,85 @@
+# Snyk による依存脆弱性の CI ゲート。
+# high 以上の既知脆弱性が混入した場合に CI を失敗させ、マージをブロックする。
+#
+# このファイルは github-repo-security スキルの templates/security.yml を元に生成する。
+# namilog は npm を frontend / twa の2ディレクトリに持つため、npm ジョブを複製し、
+# ジョブ名を "Snyk (npm:frontend)" / "Snyk (npm:twa)" として Required checks と一致させる。
+# pip は使わないため pip ジョブは無し（backend は pyproject のみで requirements.txt が無く対象外）。
+#
+# サードパーティ Action はサプライチェーン改ざん対策として完全長コミット SHA に固定する
+# （タグは後から移動されうるため）。行末コメントに対応バージョンと確認日を併記する。
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同一ブランチの古い実行はキャンセルして無駄な実行を減らす
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 最小権限（読み取りのみ）
+permissions:
+  contents: read
+
+jobs:
+  # ── npm（frontend）依存のスキャン ─────────────────────────────
+  # ジョブ名 "Snyk (npm:frontend)" はブランチ保護の Required checks（contexts）と一致させる。
+  snyk-npm-frontend:
+    name: Snyk (npm:frontend)
+    runs-on: ubuntu-latest
+    # public リポジトリでは fork からの PR に SNYK_TOKEN（secrets）が渡らずジョブが必ず失敗する。
+    # そのため fork PR ではスキップし、push と同一リポジトリ内 PR のときだけ実行する。
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (2026-07-21 確認)
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0 (2026-07-21 確認)
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # ロックファイルどおりに依存を再現（Snyk の解決精度を上げる）
+      - name: install deps
+        working-directory: frontend
+        run: npm ci
+
+      # high 以上で失敗（マージ不可）。moderate 以下は許容する。
+      - name: Snyk test (npm:frontend)
+        uses: snyk/actions/node@8e119fbb6c251787721d34ba683ed48eba792766 # master (2026-07-21 確認)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --file=frontend/package.json --severity-threshold=high
+
+  # ── npm（twa）依存のスキャン ──────────────────────────────────
+  # ジョブ名 "Snyk (npm:twa)" はブランチ保護の Required checks（contexts）と一致させる。
+  snyk-npm-twa:
+    name: Snyk (npm:twa)
+    runs-on: ubuntu-latest
+    # fork PR ではスキップ（SNYK_TOKEN が渡らないため）
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (2026-07-21 確認)
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0 (2026-07-21 確認)
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: twa/package-lock.json
+
+      # ロックファイルどおりに依存を再現（Snyk の解決精度を上げる）
+      - name: install deps
+        working-directory: twa
+        run: npm ci
+
+      # high 以上で失敗（マージ不可）。moderate 以下は許容する。
+      - name: Snyk test (npm:twa)
+        uses: snyk/actions/node@8e119fbb6c251787721d34ba683ed48eba792766 # master (2026-07-21 確認)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --file=twa/package.json --severity-threshold=high
