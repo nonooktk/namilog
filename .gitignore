@@ -59,6 +59,6 @@ twa/gradle.properties
 twa/settings.gradle
 twa/store_icon.png
 twa/manifest-checksum.txt
-twa/package-lock.json
+# package-lock.json は CI（npm ci・Snyk スキャン）の再現性確保のためコミット対象に変更（2026-07-21）
 twa/*.apk
 twa/*.aab
