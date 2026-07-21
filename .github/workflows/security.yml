@@ -82,4 +82,4 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --file=twa/package.json --severity-threshold=high
+          args: --file=twa/package.json --severity-threshold=high --policy-path=.snyk
