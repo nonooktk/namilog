@@ -3,7 +3,7 @@
   "private": true,
   "description": "なみログ TWA パッケージング（Bubblewrap）作業ディレクトリ",
   "dependencies": {
-    "@bubblewrap/cli": "1.24.1"
+    "@bubblewrap/cli": "1.25.0"
   },
   "overrides": {
     "tar": "^7.5.20"
